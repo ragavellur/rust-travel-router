@@ -136,7 +136,14 @@ Connect to the AP SSID and open `http://192.168.4.1/` in a browser.
 
 #### mDNS Discovery
 
-If avahi-daemon is installed (recommended), the router publishes itself via mDNS. Open these URLs in a browser instead of remembering the IP:
+If avahi-daemon is installed (recommended), the router publishes itself via mDNS. Install it with:
+
+```bash
+sudo apt install avahi-daemon
+sudo systemctl enable --now avahi-daemon
+```
+
+Once running, open these URLs in a browser instead of remembering the IP:
 
 - `http://travel-router.local/` — from the AP side (same network as clients)
 - `http://nanopi-neo-air.local/` — from the upstream LAN (if connected via STA)
