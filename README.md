@@ -60,7 +60,7 @@ Requirements:
 
 ```bash
 # Add the repository
-echo "deb [trusted=yes] https://ragavellur.github.io/rust-travel-router/apt ./" | \
+echo "deb [trusted=yes] https://ragavellur.github.io/rust-travel-router/ ./" | \
   sudo tee /etc/apt/sources.list.d/travel-net.list
 
 # Install
