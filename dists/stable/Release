@@ -1,0 +1,17 @@
+Origin: travel-net
+Label: travel-net APT Repository
+Suite: stable
+Codename: stable
+Date: Sat, 20 Jun 2026 13:35:53 UTC
+Architectures: armhf
+Components: main
+Description: APT repository for travel-net NAT router
+MD5Sum:
+ 35153945a5b84f594dd821820b7a23cb 748 dists/stable/main/binary-armhf/Packages
+ 93e01909bbadedcd6c45e141049d2830 535 dists/stable/main/binary-armhf/Packages.gz
+SHA1:
+ 2d0c4d1ded73ae96f2b6f13bc7fa32d06428b511 748 dists/stable/main/binary-armhf/Packages
+ e8a439e0fcb34f2de57dc5f4b539c8ceb9fedf38 535 dists/stable/main/binary-armhf/Packages.gz
+SHA256:
+ 20a22f0f9198f39033505bf2120203c9cd434de168927821848636af5c3145b6 748 dists/stable/main/binary-armhf/Packages
+ 2426f7e5710774c469d5231be2a1902259940727c384e3e65d0b6c04e7d15cf7 535 dists/stable/main/binary-armhf/Packages.gz

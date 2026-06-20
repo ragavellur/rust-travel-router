@@ -1,0 +1,20 @@
+Package: travel-net
+Version: 0.1.0-1
+Architecture: armhf
+Maintainer: Travel Net Dev <dev@travel-net.local>
+Installed-Size: 2200
+Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw
+Recommends: avahi-daemon
+Section: net
+Priority: optional
+Homepage: https://github.com/ragavellur/rust-travel-router
+Description: Travel NAT Router with web UI
+ Turn any Linux SBC with WiFi into a travel NAT router.
+ Features: AP+STA hybrid mode, web UI, WiFi scanning,
+ hostapd/dnsmasq/nftables management.
+ Inspired by the ESP32 NAT Router.
+Filename: pool/main/travel-net_0.1.0-1_armhf.deb
+Size: 729696
+MD5sum: cb7d13a4fbdff02b16f14ea04ae22538
+SHA1: 67e32926b2c13859c5379356afb6595588daac70
+SHA256: e4ab556a1e6c7aee0ab523a9f8296233ba7c25a8df06d9523facce737ba1f65f
