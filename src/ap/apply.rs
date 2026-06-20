@@ -18,6 +18,10 @@ pub async fn apply_config(path: &Path, new_cfg: Config) -> Result<(), Vec<String
 
     // Regenerate and restart services
     hostapd::stop_hostapd().await;
+
+    // Reassign IP in case it changed
+    crate::ap::assign_ap_ip(&new_cfg).map_err(|e| vec![e])?;
+
     hostapd::start_hostapd(&new_cfg).await.map_err(|e| vec![e])?;
 
     dhcp::stop_dnsmasq().await;
