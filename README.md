@@ -45,9 +45,12 @@ Any Linux SBC with at least one WiFi interface. Tested on:
 
 | Device | WiFi Chip | Arch | Works |
 |--------|-----------|------|-------|
-| NanoPi NEO Air | BCM43430 (brcmfmac) | armhf | ✓ |
-| Radxa Cubie A7A | AIC8800D80 | arm64 | ✓ |
-| Raspberry Pi 3/4 | BCM43438/BCM2711 | armhf/arm64 | likely |
+| NanoPi NEO Air | BCM43430 (brcmfmac) | armhf | ✓ confirmed |
+| Raspberry Pi Zero 2 W | BCM43438 (brcmfmac) | armhf | ✓ (same driver as NanoPi) |
+| Raspberry Pi 3 | BCM43438 (brcmfmac) | armhf/arm64 | ✓ expected |
+| Raspberry Pi 4 | BCM43455 (brcmfmac) | arm64 | ✓ expected |
+| Raspberry Pi 5 | BCM43455 / RP1 | arm64 | ✓ expected |
+| Radxa Cubie A7A | AIC8800D80 (USB) | arm64 | ✓ confirmed |
 
 Requirements:
 - Two WiFi interfaces (one for AP, one for STA), OR a single interface that supports virtual interfaces (AP on wlan1, STA on wlan0)
@@ -180,13 +183,13 @@ cargo build --release
 
 ### Cross-compilation
 
-**armhf** (32-bit ARM, e.g. NanoPi, RPi 2/3/Zero 2):
+**armhf** (32-bit ARM, e.g. NanoPi NEO Air, RPi 2/3/Zero 2):
 
 ```bash
 cargo zigbuild --release --target armv7-unknown-linux-gnueabihf
 ```
 
-**arm64** (64-bit ARM, e.g. Radxa Cubie, RPi 4/5):
+**arm64** (64-bit ARM, e.g. Radxa Cubie A7A, RPi 4/5):
 
 ```bash
 cargo zigbuild --release --target aarch64-unknown-linux-gnu
