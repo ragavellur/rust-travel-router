@@ -134,6 +134,15 @@ Config file: `/etc/travel-net/config.json`
 
 Connect to the AP SSID and open `http://192.168.4.1/` in a browser.
 
+#### mDNS Discovery
+
+If avahi-daemon is installed (recommended), the router publishes itself via mDNS. Open these URLs in a browser instead of remembering the IP:
+
+- `http://travel-router.local/` — from the AP side (same network as clients)
+- `http://nanopi-neo-air.local/` — from the upstream LAN (if connected via STA)
+
+*Note: mDNS is typically `.local` only works on Linux/macOS. Windows needs Bonjour installed, Android needs a third-party app.*
+
 | Page | Route | Description |
 |------|-------|-------------|
 | Dashboard | `/` | Status, interfaces, clients |
