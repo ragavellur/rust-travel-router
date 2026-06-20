@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<title>Getting Started</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+.step { margin-bottom: 1.5rem; }
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+.step-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #00d9ff;
+  vertical-align: middle;
+}
+.welcome { margin-bottom: 1.5rem; }
+.welcome h2 { border-bottom: none; margin-bottom: 0; }
+.welcome p { color: #888; font-size: 0.9rem; }
+.network-item {
+  cursor: pointer; padding: 0.5rem; border-radius: 6px;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.network-item:hover { background: rgba(0, 217, 255, 0.05); }
+.network-item.selected { background: rgba(0, 217, 255, 0.1); }
+.network-item.connected { opacity: 0.6; cursor: default; }
+.scan-list { max-height: 200px; overflow-y: auto; margin-top: 0.5rem; }
+</style>
+</head>
+<body>
+<div id="container">
+  <div class="header-flex">
+    <div class="header-left">
+      <a href="/" style="display:inline-block;margin-right:0.75rem;color:#00d9ff;text-decoration:none;font-size:1.5rem;">&larr;</a>
+      <h1 style="margin:0;">Getting Started</h1>
+    </div>
+  </div>
+
+  <div class="welcome">
+    <h2>Welcome!</h2>
+    <p>Follow these steps to configure your NanoPi NEO Air travel router.</p>
+  </div>
+
+  <!-- Step 1: AP Settings -->
+  <div class="step">
+    <div>
+      <span class="step-number">1</span>
+      <span class="step-title">Access Point Settings</span>
+    </div>
+    <table class="form-table" style="margin-top:0.5rem;">
+      <tr>
+        <td>SSID</td>
+        <td><input type="text" id="ap_ssid" maxlength="32" placeholder="RagaNeoAir"></td>
+      </tr>
+      <tr>
+        <td>Password</td>
+        <td>
+          <input type="text" id="ap_password" placeholder="Leave empty for open network">
+          <div class="hint">Minimum 8 characters.</div>
+        </td>
+      </tr>
+      <tr>
+        <td>Channel</td>
+        <td>
+          <select id="ap_channel">
+            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+            <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
+            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
+            <option value="10">10</option><option value="11">11</option><option value="12">12</option>
+            <option value="13">13</option>
+          </select>
+        </td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Step 2: Connect to WiFi -->
+  <div class="step">
+    <div>
+      <span class="step-number">2</span>
+      <span class="step-title">Connect to WiFi</span>
+      <span style="color:#888;font-size:0.8rem;margin-left:0.5rem;">(optional)</span>
+    </div>
+    <p style="color:#888;font-size:0.8rem;margin-top:0.3rem;">
+      Connect to an uplink WiFi network for internet access through the AP.
+    </p>
+    <div>
+      <button class="ok-button" onclick="scanNetworks()" id="scan-btn" style="margin-top:0.3rem;padding:0.5rem 1rem;font-size:0.85rem;">📡 Scan for Networks</button>
+    </div>
+    <div id="scan-results" class="scan-list" style="display:none;"></div>
+    <div id="selected-network-info" style="display:none;margin-top:0.5rem;padding:0.5rem;background:rgba(0,217,255,0.05);border-radius:6px;">
+      <div style="font-size:0.9rem;">Selected: <strong id="selected-ssid"></strong></div>
+      <input type="password" id="connect-password" placeholder="Enter WiFi password" style="width:100%;margin-top:0.3rem;">
+      <button class="ok-button" onclick="doConnect()" id="connect-btn" style="margin-top:0.3rem;padding:0.5rem 1rem;font-size:0.85rem;">Connect</button>
+      <div id="connect-message" class="message" style="margin-top:0.3rem;"></div>
+    </div>
+  </div>
+
+  <!-- Step 3: Apply -->
+  <div class="step">
+    <div>
+      <span class="step-number">3</span>
+      <span class="step-title">Apply Configuration</span>
+    </div>
+    <p style="color:#888;font-size:0.8rem;margin-top:0.3rem;">
+      Save AP settings and restart the access point.
+    </p>
+    <button class="ok-button" onclick="applyConfig()" id="apply-btn">Save &amp; Apply</button>
+    <div id="apply-message" class="message" style="margin-top:0.3rem;"></div>
+  </div>
+
+  <div style="margin-top:1rem;text-align:center;">
+    <a href="/" class="nav-button" style="display:inline-block;padding:0.6rem 1.5rem;font-size:0.9rem;text-decoration:none;">🏠 Home</a>
+  </div>
+</div>
+
+<script>
+let selectedSSID = null;
+let connecting = false;
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function scanNetworks() {
+  const results = document.getElementById('scan-results');
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  results.style.display = 'block';
+  results.innerHTML = '<div style="text-align:center;color:#888;padding:0.5rem;"><span class="spinner"></span> Scanning...</div>';
+
+  try {
+    const r = await fetch('/api/scan');
+    const data = await r.json();
+    const nets = data.networks || [];
+    const connectedSsid = data.connected_ssid;
+
+    if (nets.length === 0) {
+      results.innerHTML = '<div style="color:#888;padding:0.5rem;text-align:center;">No networks found.</div>';
+    } else {
+      nets.sort((a, b) => b.signal - a.signal);
+      results.innerHTML = '';
+      for (const net of nets) {
+        const div = document.createElement('div');
+        div.className = 'network-item' + (net.ssid === connectedSsid ? ' connected' : '');
+        const lock = net.security && net.security !== '' && net.security !== '--' ? '🔒' : '🔓';
+        const badge = net.ssid === connectedSsid ? '<span class="connected-badge">Connected</span>' : '';
+        const bars = net.signal > 75 ? '📶' : net.signal > 50 ? '📶' : net.signal > 25 ? '📶' : '📶';
+        div.innerHTML = '<span style="font-weight:500;">' + escapeHtml(net.ssid) + '</span> ' + badge +
+          '<span style="float:right;color:#888;font-size:0.85rem;">' + bars + ' ' + net.signal + '% ' + lock + '</span>';
+        if (net.ssid !== connectedSsid) {
+          div.addEventListener('click', () => selectNetwork(net.ssid));
+        }
+        results.appendChild(div);
+      }
+    }
+  } catch {
+    results.innerHTML = '<div style="color:#f44336;padding:0.5rem;text-align:center;">Scan failed.</div>';
+  }
+  btn.disabled = false;
+  btn.textContent = '📡 Scan for Networks';
+}
+
+function selectNetwork(ssid) {
+  selectedSSID = ssid;
+  document.getElementById('selected-ssid').textContent = ssid;
+  document.getElementById('selected-network-info').style.display = 'block';
+  document.getElementById('connect-password').value = '';
+  document.getElementById('connect-password').focus();
+  document.getElementById('connect-message').className = 'message';
+}
+
+async function doConnect() {
+  if (!selectedSSID || connecting) return;
+  const password = document.getElementById('connect-password').value;
+  const btn = document.getElementById('connect-btn');
+  const msg = document.getElementById('connect-message');
+  connecting = true;
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+  msg.className = 'message';
+
+  try {
+    const r = await fetch('/api/connect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ssid: selectedSSID, password: password}),
+    });
+    const data = await r.json();
+    if (data.success) {
+      msg.className = 'message success show';
+      msg.textContent = 'Connected to ' + selectedSSID + '!';
+    } else {
+      msg.className = 'message error show';
+      msg.textContent = data.error || 'Connection failed.';
+    }
+  } catch {
+    msg.className = 'message error show';
+    msg.textContent = 'Connection error.';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Connect';
+  connecting = false;
+}
+
+async function applyConfig() {
+  const btn = document.getElementById('apply-btn');
+  const msg = document.getElementById('apply-message');
+  btn.disabled = true;
+  btn.textContent = 'Applying...';
+  msg.className = 'message';
+
+  const cfg = {
+    ap_ssid: document.getElementById('ap_ssid').value.trim() || 'RagaNeoAir',
+    ap_password: document.getElementById('ap_password').value,
+    ap_channel: parseInt(document.getElementById('ap_channel').value) || 4,
+  };
+
+  try {
+    const r = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(cfg),
+    });
+    const data = await r.json();
+    if (data.success) {
+      msg.className = 'message success show';
+      msg.innerHTML = 'Settings saved! The AP will restart. Reconnect to <strong>' + cfg.ap_ssid + '</strong> and browse to <strong>http://192.168.4.1</strong>.';
+    } else {
+      msg.className = 'message error show';
+      msg.textContent = data.error || 'Save failed.';
+    }
+  } catch {
+    msg.className = 'message error show';
+    msg.textContent = 'Connection error.';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Save & Apply';
+}
+
+// Pre-fill current config
+async function loadCurrentConfig() {
+  try {
+    const r = await fetch('/api/config');
+    const cfg = await r.json();
+    if (cfg.ap_ssid) document.getElementById('ap_ssid').value = cfg.ap_ssid;
+    if (cfg.ap_password) document.getElementById('ap_password').value = cfg.ap_password;
+    if (cfg.ap_channel) document.getElementById('ap_channel').value = cfg.ap_channel;
+  } catch {}
+}
+loadCurrentConfig();
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<title>Login</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="container" style="max-width:400px;">
+  <div class="header-flex">
+    <div class="header-left">
+      <svg class="logo-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="24" r="22" stroke="#00d9ff" stroke-width="2" fill="rgba(0,217,255,0.1)"/>
+        <circle cx="24" cy="24" r="8" fill="#00d9ff" opacity="0.3"/>
+        <circle cx="24" cy="24" r="3" fill="#00d9ff"/>
+        <line x1="24" y1="2" x2="24" y2="10" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <line x1="24" y1="38" x2="24" y2="46" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <line x1="2" y1="24" x2="10" y2="24" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <line x1="38" y1="24" x2="46" y2="24" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="24" cy="24" r="16" stroke="rgba(0,217,255,0.2)" stroke-width="1" fill="none"/>
+      </svg>
+      <h1>Travel Net</h1>
+    </div>
+  </div>
+  <h2>Authentication Required</h2>
+  <form id="login-form" onsubmit="doLogin(event)">
+    <table class="form-table">
+      <tr>
+        <td>Password</td>
+        <td>
+          <input type="password" id="password" placeholder="Enter web password" autofocus>
+        </td>
+      </tr>
+    </table>
+    <div id="login-message" class="message"></div>
+    <button type="submit" class="ok-button" id="login-btn">Login</button>
+  </form>
+  <div class="footer">
+    <span>travel-net v0.1.0</span>
+  </div>
+</div>
+<script>
+async function doLogin(e) {
+  e.preventDefault();
+  const pw = document.getElementById('password').value;
+  const btn = document.getElementById('login-btn');
+  const msg = document.getElementById('login-message');
+  btn.disabled = true;
+  btn.textContent = 'Logging in...';
+  msg.className = 'message';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: pw}),
+    });
+    const data = await r.json();
+    if (data.success) {
+      msg.className = 'message success show';
+      msg.textContent = 'Login successful! Redirecting...';
+      setTimeout(() => { window.location.href = '/'; }, 500);
+    } else {
+      msg.className = 'message error show';
+      msg.textContent = data.error || 'Invalid password.';
+    }
+  } catch {
+    msg.className = 'message error show';
+    msg.textContent = 'Login error.';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Login';
+}
+</script>
+</body>
+</html>

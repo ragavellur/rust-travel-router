@@ -1,0 +1,4 @@
+target/
+*.deb
+*.ipk
+.DS_Store

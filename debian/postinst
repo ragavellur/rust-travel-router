@@ -1,0 +1,22 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Ensure config directory exists
+        mkdir -p /etc/travel-net
+
+        # Seed default config if not present
+        if [ ! -f /etc/travel-net/config.json ]; then
+            cp /usr/share/travel-net/config.default.json /etc/travel-net/config.json 2>/dev/null || true
+        fi
+
+        # Enable and start service
+        systemctl daemon-reload
+        systemctl enable travel-net.service
+        systemctl restart travel-net.service || true
+
+        echo "travel-net: Web UI available at http://192.168.4.1"
+        echo "travel-net: Connect to AP SSID 'Travel-Net' (password: travelnet)"
+        ;;
+esac

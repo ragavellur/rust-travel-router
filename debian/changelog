@@ -1,0 +1,11 @@
+travel-net (0.1.0) stable; urgency=medium
+
+  * Initial release
+  * Web UI: Dashboard, WiFi Scan, Configuration, Getting Started wizard
+  * AP+STA hybrid mode via hostapd + wpa_supplicant
+  * DHCP/DNS via dnsmasq
+  * Firewall via nftables (NAT + forwarding)
+  * System info: uptime, DHCP clients, reboot
+  * NetworkManager and wpa_supplicant backend support
+
+ -- Travel Net Dev <dev@travel-net.local>  Sat, 20 Jun 2026 00:00:00 +0000

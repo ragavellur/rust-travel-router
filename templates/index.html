@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<title>NanoPi NAT Router</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="container">
+  <div class="header-flex">
+    <div class="header-left">
+      <svg class="logo-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="24" cy="24" r="22" stroke="#00d9ff" stroke-width="2" fill="rgba(0,217,255,0.1)"/>
+        <circle cx="24" cy="24" r="8" fill="#00d9ff" opacity="0.3"/>
+        <circle cx="24" cy="24" r="3" fill="#00d9ff"/>
+        <line x1="24" y1="2" x2="24" y2="10" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <line x1="24" y1="38" x2="24" y2="46" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <line x1="2" y1="24" x2="10" y2="24" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <line x1="38" y1="24" x2="46" y2="24" stroke="#00d9ff" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="24" cy="24" r="16" stroke="rgba(0,217,255,0.2)" stroke-width="1" fill="none"/>
+      </svg>
+      <h1>NanoPi NAT Router</h1>
+    </div>
+  </div>
+
+  <h2>System Status</h2>
+  <div class="data-table status-table">
+    <table>
+      <tbody id="status-rows">
+        <tr><td colspan="2" style="text-align:center;color:#888;padding:1rem;"><span class="spinner"></span> Loading status...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Interfaces</h2>
+  <div class="data-table">
+    <table>
+      <thead>
+        <tr><th>Interface</th><th>IP</th><th>MAC</th><th>Link</th><th>Speed</th></tr>
+      </thead>
+      <tbody id="interface-rows">
+        <tr><td colspan="5" style="text-align:center;color:#888;padding:0.5rem;"><span class="spinner"></span> Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="button-container">
+    <a href="/scan" class="nav-button"><span class="icon">📡</span> WiFi Scan</a>
+    <a href="/config" class="nav-button"><span class="icon">⚙️</span> Configuration</a>
+    <a href="/setup" class="nav-button"><span class="icon">🚀</span> Getting Started</a>
+    <a href="/logs" class="nav-button"><span class="icon">📋</span> System Logs</a>
+    <a href="#" class="nav-button" onclick="rebootDevice(); return false;"><span class="icon">🔄</span> Reboot</a>
+  </div>
+
+  <div class="footer">
+    <span id="version-info">NanoPi NAT Router | <a href="https://github.com/martin-ger/esp32_nat_router" target="_blank" rel="noopener">Inspired by ESP32 NAT Router</a></span>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reboot-modal">
+  <div class="modal-box">
+    <h3>⚠️ Reboot Device</h3>
+    <p>Are you sure you want to reboot the NanoPi NEO Air? The AP will go down temporarily.</p>
+    <div style="display:flex;gap:0.75rem;justify-content:center;">
+      <button onclick="closeRebootModal()" style="background:linear-gradient(135deg,#555,#444);">Cancel</button>
+      <button onclick="confirmReboot()" style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);">Reboot</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let statusInterval = null;
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatUptime(seconds) {
+  if (!seconds || seconds < 0) return '--';
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  let parts = [];
+  if (d > 0) parts.push(d + 'd');
+  if (h > 0) parts.push(h + 'h');
+  parts.push(m + 'm');
+  return parts.join(' ');
+}
+
+function statusRow(label, value, cls) {
+  return '<tr><td>' + escapeHtml(label) + '</td><td' + (cls ? ' class="' + cls + '"' : '') + '>' + value + '</td></tr>';
+}
+
+function connectedDot(ok) {
+  return '<span class="status-dot ' + (ok ? 'connected' : 'disconnected') + '"></span>' + (ok ? 'Connected' : 'Not Connected');
+}
+
+function rebootDevice() {
+  document.getElementById('reboot-modal').classList.add('show');
+}
+
+function closeRebootModal() {
+  document.getElementById('reboot-modal').classList.remove('show');
+}
+
+async function confirmReboot() {
+  const btn = document.querySelector('.modal-box button:last-child');
+  btn.disabled = true;
+  btn.textContent = 'Rebooting...';
+  try {
+    await fetch('/api/reboot', { method: 'POST' });
+  } catch {}
+  setTimeout(() => {
+    document.querySelector('.modal-box p').textContent = 'Reboot initiated. Please wait for the device to come back online.';
+    btn.textContent = 'OK';
+    btn.disabled = false;
+    btn.onclick = closeRebootModal;
+  }, 3000);
+}
+
+function interfaceRows(ifaces) {
+  if (!ifaces || ifaces.length === 0) return '<tr><td colspan="5" style="text-align:center;color:#888;padding:0.5rem;">No interfaces found.</td></tr>';
+  return ifaces.map(function(iface) {
+    const linkDot = iface.link_detected
+      ? '<span class="status-dot connected"></span>'
+      : '<span class="status-dot disconnected"></span>';
+    const speed = iface.speed || '--';
+    const ip = iface.ip ? escapeHtml(iface.ip) : '--';
+    const mac = iface.mac ? escapeHtml(iface.mac) : '--';
+    return '<tr><td><strong>' + escapeHtml(iface.name) + '</strong></td><td>' + ip + '</td><td style="font-size:0.8rem;">' + mac + '</td><td>' + linkDot + '</td><td>' + speed + '</td></tr>';
+  }).join('');
+}
+
+async function fetchStatus() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+
+    // Status table
+    const tbody = document.getElementById('status-rows');
+    const apActive = s.ap_active;
+    const wifiOk = s.wifi_connected;
+    const clients = s.client_count || 0;
+    tbody.innerHTML =
+      statusRow('AP SSID', escapeHtml(s.ap_ssid || 'RagaNeoAir')) +
+      statusRow('AP IP', escapeHtml(s.ap_ip || '--')) +
+      statusRow('AP Status', '<span class="status-dot ' + (apActive ? 'ap-active' : 'disconnected') + '"></span>' + (apActive ? 'Active' : 'Inactive')) +
+      statusRow('Uplink', connectedDot(wifiOk) + (s.connected_ssid ? ' <strong>' + escapeHtml(s.connected_ssid) + '</strong>' : '')) +
+      statusRow('Uplink IP', wifiOk ? (s.uplink_ip || '--') : '<span class="status-value-error">--</span>') +
+      statusRow('Connected Clients', '<strong>' + clients + '</strong>' + (clients === 1 ? ' device' : ' devices')) +
+      statusRow('Uptime', formatUptime(s.uptime_secs)) +
+      statusRow('Hostname', escapeHtml(s.hostname || 'nanopi-neo-air'));
+
+    // Interface table
+    const ifaceTbody = document.getElementById('interface-rows');
+    if (s.interfaces) {
+      ifaceTbody.innerHTML = interfaceRows(s.interfaces);
+    }
+  } catch {
+    document.getElementById('status-rows').innerHTML = '<tr><td colspan="2" style="text-align:center;color:#f44336;padding:1rem;">Failed to load status</td></tr>';
+  }
+}
+
+fetchStatus();
+statusInterval = setInterval(fetchStatus, 10000);
+</script>
+</body>
+</html>

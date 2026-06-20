@@ -1,0 +1,17 @@
+{
+  "ap_ssid": "Travel-Net",
+  "ap_password": "travelnet",
+  "ap_ip": "192.168.4.1",
+  "ap_netmask": "255.255.255.0",
+  "ap_channel": 6,
+  "dhcp_start": "192.168.4.10",
+  "dhcp_end": "192.168.4.250",
+  "dhcp_lease_hours": 24,
+  "hostname": "travel-router",
+  "sta_interface": "wlan0",
+  "ap_interface": "wlan1",
+  "sta_ssid": "",
+  "sta_password": "",
+  "wifi_backend": "auto",
+  "web_password": ""
+}

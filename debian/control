@@ -1,0 +1,16 @@
+Source: travel-net
+Section: net
+Priority: optional
+Maintainer: Travel Net Dev <dev@travel-net.local>
+Build-Depends: debhelper-compat (= 13), rustc, cargo, pkg-config, libssl-dev
+Standards-Version: 4.6.2
+
+Package: travel-net
+Architecture: any
+Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, ${shlibs:Depends}, ${misc:Depends}
+Recommends: avahi-daemon
+Description: Travel NAT Router with web UI
+ Turn any Linux SBC with WiFi into a travel NAT router.
+ Features: AP+STA hybrid mode, web UI, WiFi scanning,
+ hostapd/dnsmasq/nftables management.
+ Inspired by the ESP32 NAT Router.

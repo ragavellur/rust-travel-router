@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<title>System Logs</title>
+<link rel="stylesheet" href="/static/style.css">
+<style>
+#log-output {
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: rgba(0,0,0,0.4);
+  border-radius: 8px;
+  padding: 0.75rem;
+  max-height: 60vh;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+  color: #b0b0b0;
+}
+#log-output .info { color: #b0b0b0; }
+#log-output .warn { color: #ffc107; }
+#log-output .error { color: #f44336; }
+.log-actions { display:flex; gap:0.5rem; margin-top:0.5rem; }
+.log-actions button { flex:1; }
+</style>
+</head>
+<body>
+<div id="container">
+  <div class="header-flex">
+    <div class="header-left">
+      <a href="/" style="display:inline-block;margin-right:0.75rem;color:#00d9ff;text-decoration:none;font-size:1.5rem;">&larr;</a>
+      <h1 style="margin:0;">System Logs</h1>
+    </div>
+  </div>
+  <p class="refresh-note">Last 100 log lines from travel-net service.</p>
+  <div id="log-output" class="loading"><span class="spinner"></span> Loading logs...</div>
+  <div class="log-actions">
+    <button class="ok-button" onclick="fetchLogs()" style="padding:0.5rem;">🔄 Refresh</button>
+    <button class="ok-button" onclick="fetchLogs(200)" style="padding:0.5rem;">📋 Last 200</button>
+  </div>
+  <div style="margin-top:1rem;text-align:center;">
+    <a href="/" class="nav-button" style="display:inline-block;padding:0.5rem 1.5rem;font-size:0.85rem;text-decoration:none;">🏠 Home</a>
+  </div>
+</div>
+<script>
+async function fetchLogs(lines) {
+  const output = document.getElementById('log-output');
+  output.className = 'loading';
+  output.innerHTML = '<span class="spinner"></span> Loading logs...';
+  try {
+    const url = lines ? '/api/logs?lines=' + lines : '/api/logs';
+    const r = await fetch(url);
+    const data = await r.json();
+    output.className = '';
+    output.innerHTML = data.logs || 'No logs available.';
+  } catch {
+    output.className = '';
+    output.innerHTML = '<span style="color:#f44336;">Failed to load logs.</span>';
+  }
+}
+fetchLogs();
+</script>
+</body>
+</html>

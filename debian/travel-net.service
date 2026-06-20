@@ -1,0 +1,15 @@
+[Unit]
+Description=travel-net NAT Router
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/travel-net --config /etc/travel-net/config.json
+Restart=always
+RestartSec=5
+User=root
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN
+
+[Install]
+WantedBy=multi-user.target
