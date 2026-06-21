@@ -51,7 +51,8 @@
     <a href="/config" class="nav-button"><span class="icon">⚙️</span> Configuration</a>
     <a href="/setup" class="nav-button"><span class="icon">🚀</span> Getting Started</a>
     <a href="/logs" class="nav-button"><span class="icon">📋</span> System Logs</a>
-    <a href="#" class="nav-button" onclick="rebootDevice(); return false;"><span class="icon">🔄</span> Reboot</a>
+    <a href="#" class="nav-button" onclick="showActionModal('reboot'); return false;"><span class="icon">🔄</span> Reboot</a>
+    <a href="#" class="nav-button" onclick="showActionModal('shutdown'); return false;"><span class="icon">⏻</span> Shutdown</a>
   </div>
 
   <div class="footer">
@@ -59,19 +60,20 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="reboot-modal">
+<div class="modal-overlay" id="action-modal">
   <div class="modal-box">
-    <h3>⚠️ Reboot Device</h3>
-    <p>Are you sure you want to reboot the NanoPi NEO Air? The AP will go down temporarily.</p>
+    <h3 id="action-modal-title">⚠️ Reboot Device</h3>
+    <p id="action-modal-text">Are you sure you want to reboot? The AP will go down temporarily.</p>
     <div style="display:flex;gap:0.75rem;justify-content:center;">
-      <button onclick="closeRebootModal()" style="background:linear-gradient(135deg,#555,#444);">Cancel</button>
-      <button onclick="confirmReboot()" style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);">Reboot</button>
+      <button onclick="closeActionModal()" style="background:linear-gradient(135deg,#555,#444);">Cancel</button>
+      <button id="action-modal-confirm" onclick="confirmAction()" style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);">Reboot</button>
     </div>
   </div>
 </div>
 
 <script>
 let statusInterval = null;
+let pendingAction = null;
 
 function escapeHtml(str) {
   if (typeof str !== 'string') return '';
@@ -98,26 +100,45 @@ function connectedDot(ok) {
   return '<span class="status-dot ' + (ok ? 'connected' : 'disconnected') + '"></span>' + (ok ? 'Connected' : 'Not Connected');
 }
 
-function rebootDevice() {
-  document.getElementById('reboot-modal').classList.add('show');
+function showActionModal(action) {
+  pendingAction = action;
+  const title = document.getElementById('action-modal-title');
+  const text = document.getElementById('action-modal-text');
+  const btn = document.getElementById('action-modal-confirm');
+  if (action === 'shutdown') {
+    title.textContent = '⏻ Shutdown Device';
+    text.textContent = 'Are you sure you want to shut down? You will need physical access to turn it back on.';
+    btn.textContent = 'Shutdown';
+  } else {
+    title.textContent = '⚠️ Reboot Device';
+    text.textContent = 'Are you sure you want to reboot? The AP will go down temporarily.';
+    btn.textContent = 'Reboot';
+  }
+  btn.disabled = false;
+  document.getElementById('action-modal').classList.add('show');
 }
 
-function closeRebootModal() {
-  document.getElementById('reboot-modal').classList.remove('show');
+function closeActionModal() {
+  document.getElementById('action-modal').classList.remove('show');
+  pendingAction = null;
 }
 
-async function confirmReboot() {
-  const btn = document.querySelector('.modal-box button:last-child');
+async function confirmAction() {
+  const btn = document.getElementById('action-modal-confirm');
+  const text = document.getElementById('action-modal-text');
   btn.disabled = true;
-  btn.textContent = 'Rebooting...';
+  btn.textContent = pendingAction === 'shutdown' ? 'Shutting down...' : 'Rebooting...';
   try {
-    await fetch('/api/reboot', { method: 'POST' });
+    await fetch('/api/' + pendingAction, { method: 'POST' });
   } catch {}
+  const doneMsg = pendingAction === 'shutdown'
+    ? 'Shutdown initiated. The device will power off.'
+    : 'Reboot initiated. Please wait for the device to come back online.';
   setTimeout(() => {
-    document.querySelector('.modal-box p').textContent = 'Reboot initiated. Please wait for the device to come back online.';
+    text.textContent = doneMsg;
     btn.textContent = 'OK';
     btn.disabled = false;
-    btn.onclick = closeRebootModal;
+    btn.onclick = closeActionModal;
   }, 3000);
 }
 

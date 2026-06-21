@@ -112,6 +112,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/config", get(api_config_get).post(api_config_post))
         .route("/api/clients", get(api_clients))
         .route("/api/reboot", post(api_reboot))
+        .route("/api/shutdown", post(api_shutdown))
         .route("/api/login", post(api_login))
         .route("/api/logout", post(api_logout))
         .route("/api/logs", get(api_logs))
@@ -269,6 +270,17 @@ async fn api_reboot(State(state): State<AppState>, headers: axum::http::HeaderMa
         reboot::reboot().ok();
     });
     (StatusCode::OK, Json(serde_json::json!({"success": true, "message": "Rebooting..."}))).into_response()
+}
+
+async fn api_shutdown(State(state): State<AppState>, headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if !is_authed(&state, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Unauthorized"}))).into_response();
+    }
+    tokio::spawn(async {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        reboot::shutdown().ok();
+    });
+    (StatusCode::OK, Json(serde_json::json!({"success": true, "message": "Shutting down..."}))).into_response()
 }
 
 async fn api_login(

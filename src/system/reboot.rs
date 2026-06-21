@@ -6,3 +6,10 @@ pub fn reboot() -> Result<(), String> {
         .map(|_| ())
         .map_err(|e| format!("Reboot failed: {e}"))
 }
+
+pub fn shutdown() -> Result<(), String> {
+    Command::new("poweroff")
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Shutdown failed: {e}"))
+}
