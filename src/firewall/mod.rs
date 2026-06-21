@@ -7,6 +7,17 @@ pub async fn apply_ruleset(cfg: &Config) -> Result<(), String> {
 
     std::fs::write(nft_file, &rules).map_err(|e| format!("Write nftables rules: {e}"))?;
 
+    // Enable IP forwarding
+    let fw = Command::new("sysctl")
+        .args(["-w", "net.ipv4.ip_forward=1"])
+        .output()
+        .map_err(|e| format!("sysctl error: {e}"))?;
+
+    if !fw.status.success() {
+        let stderr = String::from_utf8_lossy(&fw.stderr);
+        tracing::warn!("Failed to set ip_forward=1: {stderr}");
+    }
+
     let out = Command::new("nft")
         .args(["-f", nft_file])
         .output()
