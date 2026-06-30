@@ -50,12 +50,16 @@ Any Linux SBC with at least one WiFi interface. Tested on:
 | Raspberry Pi 3 | BCM43438 (brcmfmac) | armhf/arm64 | ✓ expected |
 | Raspberry Pi 4 | BCM43455 (brcmfmac) | arm64 | ✓ expected |
 | Raspberry Pi 5 | BCM43455 / RP1 | arm64 | ✓ expected |
-| Radxa Cubie A7A | AIC8800D80 (USB) | arm64 | ✓ confirmed |
+| Radxa Cubie A7A | AIC8800D80 (USB, dual MAC) | arm64 | ✓ confirmed (NM backend) |
+| Radxa Cubie A5E | AIC8800D80 (SDIO, single MAC) | arm64 | ✓ confirmed (NM backend) |
+| Any x86-64 laptop | any | amd64 | ✓ (NM backend) |
 
 Requirements:
 - Two WiFi interfaces (one for AP, one for STA), OR a single interface that supports virtual interfaces (AP on wlan1, STA on wlan0)
-- `hostapd`, `dnsmasq`, `wpa_supplicant`, `nftables`, `iw` installed
-- For AP+STA on single-radio chips (like brcmfmac): both interfaces must share the same channel
+- `wpasupplicant` (or `network-manager`) and `iw` installed
+- For **hostapd backend** (brcmfmac chips): `hostapd`, `dnsmasq`, `nftables` also required
+- For **NM backend** (AIC8800 chips without hostapd support): `network-manager` handles AP, DHCP and NAT automatically
+- AP+STA on single-radio chips (like brcmfmac): both interfaces must share the same channel
 
 ## Installation
 
@@ -205,10 +209,16 @@ cargo build --release
 cargo zigbuild --release --target armv7-unknown-linux-gnueabihf
 ```
 
-**arm64** (64-bit ARM, e.g. Radxa Cubie A7A, RPi 4/5):
+**arm64** (64-bit ARM, e.g. Radxa Cubie A7A/A5E, RPi 4/5):
 
 ```bash
 cargo zigbuild --release --target aarch64-unknown-linux-gnu
+```
+
+**amd64** (x86-64 laptops):
+
+```bash
+cargo zigbuild --release --target x86_64-unknown-linux-gnu
 ```
 
 ### Build .deb package
