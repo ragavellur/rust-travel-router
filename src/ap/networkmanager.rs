@@ -40,7 +40,12 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         .args(["connection", "delete", NM_CONNECTION_NAME])
         .output();
 
-    // Create NM hotspot connection
+    // Map ap_band to NM wifi.band
+    let nm_band = match cfg.ap_band.as_str() {
+        "a" => Some("a"),
+        "auto" => None,
+        _ => Some("bg"),
+    };
     let channel_str = cfg.ap_channel.to_string();
     let mut args = vec![
         "connection", "add",
@@ -49,11 +54,14 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         "con-name", NM_CONNECTION_NAME,
         "ifname", iface,
         "ssid", &cfg.ap_ssid,
-        "wifi.band", "bg",
         "wifi.channel", &channel_str,
         "ipv4.method", "shared",
         "ipv4.address", &cfg.ap_ip,
     ];
+    if let Some(band) = nm_band {
+        args.push("wifi.band");
+        args.push(band);
+    }
     if !cfg.ap_password.is_empty() {
         args.push("wifi-sec.key-mgmt");
         args.push("wpa-psk");

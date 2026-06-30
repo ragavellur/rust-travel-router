@@ -41,14 +41,29 @@ pub fn is_running() -> bool {
 }
 
 fn generate_conf(cfg: &Config) -> Result<(), String> {
+    let hw_mode = match cfg.ap_band.as_str() {
+        "a" => "a",
+        _ => "g",
+    };
+
+    let mut extra = String::from("ieee80211n=1\nwmm_enabled=1\n");
+
+    if hw_mode == "a" {
+        extra.push_str("ht_capab=[HT40+][HT40-][LDPC][SMPS-STATIC]\n");
+        extra.push_str("ieee80211ac=1\n");
+        extra.push_str("vht_capab=[MAX-MPDU-7991][RXLDPC][SHORT-GI-80][TX-STBC-2BY1][RX-STBC-1][MAX-A-MPDU-LEN-EXP-3]\n");
+        extra.push_str("vht_oper_chwidth=1\n");
+    } else {
+        extra.push_str("ht_capab=[HT40+][LDPC][SMPS-STATIC]\n");
+    }
+
     let conf = format!(
         r#"interface={iface}
 driver=nl80211
 ssid={ssid}
-hw_mode=g
+hw_mode={hw_mode}
 channel={channel}
-wmm_enabled=1
-macaddr_acl=0
+{extra}macaddr_acl=0
 auth_algs=1
 ignore_broadcast_ssid=0
 wpa=2
@@ -60,7 +75,9 @@ ctrl_interface=/var/run/hostapd
 "#,
         iface = cfg.ap_interface,
         ssid = cfg.ap_ssid,
+        hw_mode = hw_mode,
         channel = cfg.ap_channel,
+        extra = extra,
         password = if cfg.ap_password.is_empty() { "travel-net".into() } else { cfg.ap_password.clone() },
     );
 

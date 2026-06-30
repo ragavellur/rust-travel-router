@@ -95,6 +95,7 @@ struct ConfigUpdate {
     ap_ip: Option<String>,
     ap_netmask: Option<String>,
     ap_channel: Option<u8>,
+    ap_band: Option<String>,
     dhcp_start: Option<String>,
     dhcp_end: Option<String>,
     dhcp_lease_hours: Option<u32>,
@@ -215,6 +216,7 @@ async fn api_config_post(
     if let Some(v) = update.ap_ip { cfg.ap_ip = v; }
     if let Some(v) = update.ap_netmask { cfg.ap_netmask = v; }
     if let Some(v) = update.ap_channel { cfg.ap_channel = v; }
+    if let Some(v) = update.ap_band { cfg.ap_band = v; }
     if let Some(v) = update.dhcp_start { cfg.dhcp_start = v; }
     if let Some(v) = update.dhcp_end { cfg.dhcp_end = v; }
     if let Some(v) = update.dhcp_lease_hours { cfg.dhcp_lease_hours = v; }

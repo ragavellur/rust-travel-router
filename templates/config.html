@@ -40,8 +40,19 @@ async function loadConfig() {
 }
 
 function buildForm(cfg) {
-  const chOpts = [1,2,3,4,5,6,7,8,9,10,11,12,13].map(ch =>
+  const is5Ghz = cfg.ap_band === 'a';
+  const bandChannels = is5Ghz
+    ? [36,40,44,48,52,56,60,64,100,104,108,112,116,120,124,128,132,136,140,144,149,153,157,161,165]
+    : [1,2,3,4,5,6,7,8,9,10,11,12,13];
+  const chOpts = bandChannels.map(ch =>
     '<option value="' + ch + '"' + (ch === cfg.ap_channel ? ' selected' : '') + '>' + ch + '</option>'
+  ).join('');
+  const bandOpts = [
+    {v:'bg', l:'2.4 GHz (bg)'},
+    {v:'a', l:'5 GHz (a)'},
+    {v:'auto', l:'Auto'},
+  ].map(b =>
+    '<option value="' + b.v + '"' + (b.v === cfg.ap_band ? ' selected' : '') + '>' + b.l + '</option>'
   ).join('');
   return `
     <h2>Access Point</h2>
@@ -58,10 +69,17 @@ function buildForm(cfg) {
         </td>
       </tr>
       <tr>
+        <td>Band</td>
+        <td>
+          <select id="ap_band" onchange="onBandChange()">${bandOpts}</select>
+          <div class="hint">5 GHz offers higher speed but shorter range. Auto lets the driver decide.</div>
+        </td>
+      </tr>
+      <tr>
         <td>Channel</td>
         <td>
           <select id="ap_channel">${chOpts}</select>
-          <div class="hint">2.4 GHz channels 1-13. brcmfmac does not support ACS.</div>
+          <div class="hint" id="channel-hint">2.4 GHz channels 1-13.</div>
         </td>
       </tr>
     </table>
@@ -117,6 +135,27 @@ function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function onBandChange() {
+  const band = document.getElementById('ap_band').value;
+  const chSel = document.getElementById('ap_channel');
+  const hint = document.getElementById('channel-hint');
+  const channels = band === 'a'
+    ? [36,40,44,48,52,56,60,64,100,104,108,112,116,120,124,128,132,136,140,144,149,153,157,161,165]
+    : band === 'auto'
+    ? [0,1,2,3,4,5,6,7,8,9,10,11,12,13,36,40,44,48,52,56,60,64,100,104,108,112,116,120,124,128,132,136,140,144,149,153,157,161,165]
+    : [1,2,3,4,5,6,7,8,9,10,11,12,13];
+  const current = parseInt(chSel.value);
+  chSel.innerHTML = channels.map(ch =>
+    '<option value="' + ch + '"' + (ch === current ? ' selected' : '') + '>' + (ch === 0 ? 'Auto' : ch) + '</option>'
+  ).join('');
+  if (!channels.includes(current)) {
+    chSel.value = channels[0];
+  }
+  if (band === 'a') hint.textContent = '5 GHz channels 36-64, 100-144, 149-165.';
+  else if (band === 'auto') hint.textContent = 'Auto-select or choose a specific channel for either band.';
+  else hint.textContent = '2.4 GHz channels 1-13.';
+}
+
 function showMessage(text, type) {
   const msg = document.getElementById('message');
   msg.className = 'message ' + type + ' show';
@@ -133,6 +172,7 @@ async function saveConfig() {
     ap_ssid: document.getElementById('ap_ssid').value.trim(),
     ap_password: document.getElementById('ap_password').value,
     ap_channel: parseInt(document.getElementById('ap_channel').value),
+    ap_band: document.getElementById('ap_band').value,
     ap_ip: document.getElementById('ap_ip').value.trim(),
     ap_netmask: document.getElementById('ap_netmask').value.trim(),
     dhcp_start: document.getElementById('dhcp_start').value.trim(),
