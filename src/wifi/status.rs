@@ -40,7 +40,23 @@ fn status_nmcli(iface: &str) -> LinkStatus {
     let connected = out.lines().any(|line| {
         line.starts_with(&format!("{iface}:")) && line.contains("connected")
     });
-    LinkStatus { connected, ssid: None }
+
+    // Get SSID via iw (works on NM-managed interfaces too)
+    let ssid = if connected {
+        let iw_out = Command::new("iw")
+            .args(["dev", iface, "link"])
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .unwrap_or_default();
+        iw_out.lines()
+            .find(|l| l.trim().starts_with("SSID:"))
+            .map(|l| l.trim().strip_prefix("SSID:").unwrap_or("").trim().to_string())
+    } else {
+        None
+    };
+
+    LinkStatus { connected, ssid }
 }
 
 fn status_iw(iface: &str) -> LinkStatus {
