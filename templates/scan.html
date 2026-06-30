@@ -3,7 +3,6 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
-<meta http-equiv="refresh" content="15">
 <title>WiFi Scan</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
 <link rel="stylesheet" href="/static/style.css">
@@ -19,6 +18,50 @@
   cursor: default;
   opacity: 0.6;
 }
+@keyframes fadeIn {
+  from { opacity: 0; background: rgba(76, 175, 80, 0.15); }
+  to   { opacity: 1; background: transparent; }
+}
+@keyframes fadeOut {
+  from { opacity: 1; max-height: 60px; }
+  to   { opacity: 0; max-height: 0; }
+}
+tr.network-new {
+  animation: fadeIn 1.5s ease-out;
+}
+tr.network-removed {
+  animation: fadeOut 0.8s ease-in forwards;
+}
+.scan-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+  color: #aaa;
+}
+.scan-status .spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+}
+.scan-now-btn {
+  background: linear-gradient(135deg, #00d9ff, #0099cc);
+  border: none;
+  color: #111;
+  padding: 0.3rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.scan-now-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 </style>
 </head>
 <body>
@@ -29,7 +72,14 @@
       <h1 style="margin:0;">WiFi Scan</h1>
     </div>
   </div>
-  <p class="refresh-note">Auto-refreshes every 15 seconds. <span id="network-count">Scanning...</span></p>
+
+  <div class="scan-status">
+    <span id="network-count">Scanning for networks...</span>
+    <span>
+      <span id="last-scan" style="margin-right:0.5rem;"></span>
+      <button class="scan-now-btn" id="scan-now-btn" onclick="manualScan()">Scan Now</button>
+    </span>
+  </div>
 
   <div style="overflow-x:auto;">
     <table class="data-table">
@@ -69,6 +119,11 @@
 <script>
 let connectSSID = null;
 let connecting = false;
+let scanPoll = null;
+let scanTimer = null;
+let lastScanTime = 0;
+let scanInProgress = false;
+const POLL_INTERVAL = 15000;
 
 function escapeHtml(str) {
   if (typeof str !== 'string') return '';
@@ -94,26 +149,166 @@ function signalBars(pct, label) {
   return html;
 }
 
-async function loadNetworks() {
-  const tbody = document.getElementById('scan-results');
+function escapeAttr(s) {
+  return escapeHtml(s).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+function getSsidKey(net) {
+  return net.ssid;
+}
+
+function formatTime(ts) {
+  const secs = Math.floor((Date.now() - ts) / 1000);
+  if (secs < 5) return 'just now';
+  if (secs < 60) return secs + 's ago';
+  const m = Math.floor(secs / 60);
+  return m + 'm ' + (secs % 60) + 's ago';
+}
+
+function updateTimerDisplay() {
+  const el = document.getElementById('last-scan');
+  if (lastScanTime > 0) {
+    el.textContent = formatTime(lastScanTime);
+  }
+}
+
+function stopTimer() {
+  if (scanTimer) {
+    clearInterval(scanTimer);
+    scanTimer = null;
+  }
+}
+
+function startTimer() {
+  stopTimer();
+  scanTimer = setInterval(updateTimerDisplay, 5000);
+  updateTimerDisplay();
+}
+
+function stopPolling() {
+  if (scanPoll) {
+    clearInterval(scanPoll);
+    scanPoll = null;
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  scanPoll = setInterval(backgroundScan, POLL_INTERVAL);
+}
+
+async function manualScan() {
+  if (scanInProgress) return;
+  const btn = document.getElementById('scan-now-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning...';
+  await backgroundScan();
+  btn.disabled = false;
+  btn.textContent = 'Scan Now';
+}
+
+function enableLoadingState() {
   const countEl = document.getElementById('network-count');
+  countEl.innerHTML = '<span class="spinner"></span> Scanning...';
+}
+
+function disableLoadingState(count) {
+  const countEl = document.getElementById('network-count');
+  countEl.textContent = 'Found ' + count + ' network' + (count !== 1 ? 's' : '') + '.';
+}
+
+async function backgroundScan() {
+  const tbody = document.getElementById('scan-results');
+  const hasInitialData = tbody.querySelector('tr[data-ssid]') !== null;
+
+  if (!hasInitialData) {
+    enableLoadingState();
+  }
+
   try {
     const r = await fetch('/api/scan');
     const data = await r.json();
     const nets = data.networks || [];
     const connectedSsid = data.connected_ssid;
-    countEl.textContent = 'Found ' + nets.length + ' network' + (nets.length !== 1 ? 's' : '') + '.';
+    lastScanTime = Date.now();
+    updateTimerDisplay();
+    scanInProgress = false;
+    startTimer();
 
-    if (nets.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:1rem;">No networks found.</td></tr>';
-      return;
+    applyDiff(tbody, nets, connectedSsid);
+    disableLoadingState(nets.length);
+  } catch {
+    if (!hasInitialData) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#f44336;padding:1rem;">Scan failed. Try again.</td></tr>';
+      document.getElementById('network-count').textContent = 'Scan failed.';
     }
+    scanInProgress = false;
+  }
+}
 
-    nets.sort((a, b) => b.signal - a.signal);
-    tbody.innerHTML = '';
-    for (const net of nets) {
+function applyDiff(tbody, nets, connectedSsid) {
+  if (nets.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:1rem;">No networks found.</td></tr>';
+    return;
+  }
+
+  nets.sort((a, b) => b.signal - a.signal);
+
+  // Build a map of current rows by SSID
+  const existing = new Map();
+  const rows = tbody.querySelectorAll('tr[data-ssid]');
+  for (const row of rows) {
+    existing.set(row.getAttribute('data-ssid'), row);
+  }
+
+  // Build a set of incoming SSIDs
+  const incoming = new Set(nets.map(getSsidKey));
+
+  // Remove rows for networks no longer visible
+  for (const [ssid, row] of existing) {
+    if (!incoming.has(ssid)) {
+      row.className = 'network-removed';
+      setTimeout(function() { if (row.parentNode) row.parentNode.removeChild(row); }, 800);
+    }
+  }
+
+  // Add or update rows
+  let firstNew = null;
+  for (const net of nets) {
+    const key = getSsidKey(net);
+    const existingRow = existing.get(key);
+
+    if (existingRow) {
+      // Update signal and connected badge in-place
+      const signalTd = existingRow.querySelectorAll('td')[1];
+      if (signalTd) {
+        signalTd.innerHTML = signalBars(net.signal, net.signal);
+      }
+      const actionTd = existingRow.querySelectorAll('td')[4];
+      if (actionTd) {
+        if (net.ssid === connectedSsid) {
+          actionTd.innerHTML = '<span class="connected-badge">Connected</span>';
+        } else if (!actionTd.querySelector('button')) {
+          actionTd.innerHTML = '<button class="red-button" onclick="selectNetwork(\'' + escapeAttr(net.ssid) + '\',\'' + escapeAttr(net.security || '') + '\')">Connect</button>';
+        }
+      }
+      // Update connected badge in SSID cell
+      const ssidTd = existingRow.querySelectorAll('td')[0];
+      const badgeEl = ssidTd.querySelector('.connected-badge');
+      if (net.ssid === connectedSsid && !badgeEl) {
+        ssidTd.innerHTML = '<strong>' + escapeHtml(net.ssid) + '</strong> <span class="connected-badge">Connected</span>';
+      } else if (net.ssid !== connectedSsid && badgeEl) {
+        ssidTd.innerHTML = '<strong>' + escapeHtml(net.ssid) + '</strong>';
+      }
+      // Update security icon
+      const secTd = existingRow.querySelectorAll('td')[3];
+      const lock = net.security && net.security !== '' && net.security !== '--' ? '🔒' : '🔓';
+      secTd.innerHTML = escapeHtml(net.security || 'Open') + ' ' + lock;
+    } else {
+      // New network - create row
       const tr = document.createElement('tr');
-      tr.className = 'network-item';
+      tr.className = 'network-item network-new';
+      tr.setAttribute('data-ssid', key);
       const badge = net.ssid === connectedSsid ? '<span class="connected-badge">Connected</span>' : '';
       const lock = net.security && net.security !== '' && net.security !== '--' ? '🔒' : '🔓';
       const ssidCell = '<td><strong>' + escapeHtml(net.ssid) + '</strong> ' + badge + '</td>';
@@ -123,14 +318,17 @@ async function loadNetworks() {
       const actionCell = '<td>' +
         (net.ssid === connectedSsid
           ? '<span class="connected-badge">Connected</span>'
-          : '<button class="red-button" onclick="selectNetwork(\'' + escapeHtml(net.ssid).replace(/'/g, "\\'") + '\',\'' + escapeHtml(net.security || '').replace(/'/g, "\\'") + '\')">Connect</button>'
+          : '<button class="red-button" onclick="selectNetwork(\'' + escapeAttr(net.ssid) + '\',\'' + escapeAttr(net.security || '') + '\')">Connect</button>'
         ) + '</td>';
       tr.innerHTML = ssidCell + signalCell + chCell + secCell + actionCell;
       tbody.appendChild(tr);
+      if (!firstNew) firstNew = tr;
     }
-  } catch {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#f44336;padding:1rem;">Scan failed. Please refresh.</td></tr>';
-    countEl.textContent = 'Scan failed.';
+  }
+
+  // Scroll to first new network
+  if (firstNew) {
+    firstNew.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
 
@@ -170,7 +368,7 @@ async function doConnect() {
     if (data.success) {
       msg.className = 'message success show';
       msg.textContent = 'Connected to ' + connectSSID + '!';
-      setTimeout(loadNetworks, 2000);
+      setTimeout(backgroundScan, 2000);
     } else {
       msg.className = 'message error show';
       msg.textContent = data.error || 'Connection failed.';
@@ -184,7 +382,9 @@ async function doConnect() {
   connecting = false;
 }
 
-loadNetworks();
+// Initial load and start polling
+backgroundScan();
+startPolling();
 </script>
 </body>
 </html>

@@ -48,8 +48,11 @@ async fn main() {
     }
 
     let _ = ap::start_ap(&cfg).await;
-    let _ = dhcp::start_dnsmasq(&cfg).await;
-    let _ = firewall::apply_ruleset(&cfg).await;
+    let nm_backend = backend == wifi::Backend::NetworkManager;
+    if !nm_backend {
+        let _ = dhcp::start_dnsmasq(&cfg).await;
+        let _ = firewall::apply_ruleset(&cfg).await;
+    }
 
     let app = web::build_router(cfg.clone());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:80")

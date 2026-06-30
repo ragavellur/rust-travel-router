@@ -1,8 +1,10 @@
 pub mod hostapd;
 pub mod interface;
 pub mod apply;
+pub mod networkmanager;
 
 use crate::config::Config;
+use crate::wifi;
 
 pub fn assign_ap_ip(cfg: &Config) -> Result<(), String> {
     let iface = &cfg.ap_interface;
@@ -39,8 +41,16 @@ pub fn assign_ap_ip(cfg: &Config) -> Result<(), String> {
 }
 
 pub async fn start_ap(cfg: &Config) -> Result<(), String> {
-    interface::create_ap_interface(cfg).await?;
-    assign_ap_ip(cfg)?;
-    hostapd::start_hostapd(cfg).await?;
-    Ok(())
+    let backend = wifi::detect_backend();
+    match backend {
+        wifi::Backend::NetworkManager => {
+            networkmanager::start_nm_ap(cfg).await
+        }
+        wifi::Backend::WpaSupplicant => {
+            interface::create_ap_interface(cfg).await?;
+            assign_ap_ip(cfg)?;
+            hostapd::start_hostapd(cfg).await?;
+            Ok(())
+        }
+    }
 }
