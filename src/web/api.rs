@@ -134,7 +134,7 @@ async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderM
     Json(StatusResponse {
         wifi_connected: link.connected,
         connected_ssid: link.ssid,
-        ap_active: crate::ap::hostapd::is_running(),
+        ap_active: crate::ap::hostapd::is_running() || crate::ap::networkmanager::is_running(),
         ap_ssid: cfg.ap_ssid.clone(),
         ap_ip: cfg.ap_ip.clone(),
         ap_channel: cfg.ap_channel,
