@@ -17,7 +17,7 @@ pub async fn apply_config(path: &Path, new_cfg: Config) -> Result<(), Vec<String
     // Save new config
     config::save(path, &new_cfg).map_err(|e| vec![e.to_string()])?;
 
-    let backend = wifi::detect_backend();
+    let backend = wifi::detect_backend(&new_cfg.wifi_backend);
     match backend {
         wifi::Backend::NetworkManager => {
             crate::ap::networkmanager::stop_nm_ap().await;

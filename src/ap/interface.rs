@@ -1,8 +1,24 @@
 use crate::config::Config;
+use std::path::Path;
 use std::process::Command;
+
+const NM_UNMANAGED_CONF: &str = "/etc/NetworkManager/conf.d/98-travel-net-unmanaged.conf";
+
+fn nm_mark_unmanaged(iface: &str) {
+    if !Path::new("/usr/bin/nmcli").exists() {
+        return;
+    }
+    // Create NM config to ignore this interface permanently
+    let conf = format!("[keyfile]\nunmanaged-devices=interface-name:{iface}\n");
+    let _ = std::fs::write(NM_UNMANAGED_CONF, &conf);
+    let _ = Command::new("nmcli").args(["general", "reload"]).output();
+}
 
 pub async fn create_ap_interface(cfg: &Config) -> Result<(), String> {
     let iface = &cfg.ap_interface;
+
+    // Mark interface as unmanaged in NM before creating it
+    nm_mark_unmanaged(iface);
 
     // Check if interface already exists
     let check = Command::new("iw")

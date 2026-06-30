@@ -49,12 +49,21 @@ fn generate_conf(cfg: &Config) -> Result<(), String> {
     let mut extra = String::from("ieee80211n=1\nwmm_enabled=1\n");
 
     if hw_mode == "a" {
-        extra.push_str("ht_capab=[HT40+][HT40-][LDPC][SMPS-STATIC]\n");
+        extra.push_str("ht_capab=[HT40+][HT40-][LDPC][SHORT-GI-20][SHORT-GI-40][RX-STBC1]\n");
         extra.push_str("ieee80211ac=1\n");
-        extra.push_str("vht_capab=[MAX-MPDU-7991][RXLDPC][SHORT-GI-80][TX-STBC-2BY1][RX-STBC-1][MAX-A-MPDU-LEN-EXP-3]\n");
+        extra.push_str("vht_capab=[MAX-MPDU-7991][RXLDPC][SHORT-GI-80][RX-STBC-1][MAX-A-MPDU-LEN-EXP-3]\n");
         extra.push_str("vht_oper_chwidth=1\n");
+        // Compute VHT80 center frequency segment 0 index
+        let ch = cfg.ap_channel;
+        let seg0 = if ch <= 48 { 42 }
+            else if ch <= 64 { 58 }
+            else if ch <= 112 { 106 }
+            else if ch <= 128 { 122 }
+            else if ch <= 144 { 138 }
+            else { 155 };
+        extra.push_str(&format!("vht_oper_centr_freq_seg0_idx={seg0}\n"));
     } else {
-        extra.push_str("ht_capab=[HT40+][LDPC][SMPS-STATIC]\n");
+        extra.push_str("ht_capab=[HT40+][SHORT-GI-20][SHORT-GI-40][LDPC][RX-STBC1]\n");
     }
 
     let conf = format!(

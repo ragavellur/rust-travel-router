@@ -6,6 +6,17 @@ const NM_CONNECTION_NAME: &str = "travel-net-hotspot";
 pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
     let iface = &cfg.ap_interface;
 
+    // Compute CIDR from bare IP + netmask, or use directly if already CIDR
+    let cidr = if cfg.ap_ip.contains('/') {
+        cfg.ap_ip.clone()
+    } else {
+        let prefix = ipnetwork::ipv4_mask_to_prefix(
+            cfg.ap_netmask.parse()
+                .map_err(|e| format!("Invalid netmask: {e}"))?
+        ).map_err(|e| format!("Invalid netmask: {e}"))?;
+        format!("{}/{}", cfg.ap_ip, prefix)
+    };
+
     // Create virtual AP interface if it doesn't exist
     let check = Command::new("iw")
         .args(["dev"])
@@ -27,7 +38,7 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
     // Assign IP and bring up
     let _ = Command::new("ip").args(["addr", "flush", "dev", iface]).output();
     Command::new("ip")
-        .args(["addr", "add", &cfg.ap_ip, "dev", iface])
+        .args(["addr", "add", &cidr, "dev", iface])
         .output()
         .map_err(|e| format!("ip addr add failed: {e}"))?;
     Command::new("ip")
@@ -56,7 +67,7 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         "ssid", &cfg.ap_ssid,
         "wifi.channel", &channel_str,
         "ipv4.method", "shared",
-        "ipv4.address", &cfg.ap_ip,
+        "ipv4.address", &cidr,
     ];
     if let Some(band) = nm_band {
         args.push("wifi.band");

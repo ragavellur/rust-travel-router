@@ -30,12 +30,12 @@ async fn main() {
         std::process::exit(1);
     });
 
-    let backend = wifi::detect_backend();
+    let backend = wifi::detect_backend(&cfg.wifi_backend);
     tracing::info!("WiFi backend: {backend:?}");
 
     // Auto-connect STA if configured
     if !cfg.sta_ssid.is_empty() {
-        let backend = wifi::detect_backend();
+        let backend = wifi::detect_backend(&cfg.wifi_backend);
         let sta_iface = cfg.sta_interface.clone();
         let sta_ssid = cfg.sta_ssid.clone();
         let sta_password = cfg.sta_password.clone();

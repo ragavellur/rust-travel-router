@@ -91,11 +91,16 @@ impl Default for Config {
 
 impl Config {
     pub fn ap_network(&self) -> Result<Ipv4Network, String> {
-        Ipv4Network::new(
-            self.ap_ip.parse().map_err(|e| format!("Invalid AP IP: {e}"))?,
-            self.ap_netmask.parse().map_err(|e| format!("Invalid netmask: {e}"))?,
-        )
-        .map_err(|e| format!("Invalid network: {e}"))
+        if self.ap_ip.contains('/') {
+            self.ap_ip.parse()
+                .map_err(|e| format!("Invalid AP IP: {e}"))
+        } else {
+            Ipv4Network::new(
+                self.ap_ip.parse().map_err(|e| format!("Invalid AP IP: {e}"))?,
+                self.ap_netmask.parse().map_err(|e| format!("Invalid netmask: {e}"))?,
+            )
+            .map_err(|e| format!("Invalid network: {e}"))
+        }
     }
 
     pub fn validate(&self) -> Result<(), Vec<String>> {

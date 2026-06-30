@@ -8,17 +8,20 @@ use crate::wifi;
 
 pub fn assign_ap_ip(cfg: &Config) -> Result<(), String> {
     let iface = &cfg.ap_interface;
-    let ip = &cfg.ap_ip;
 
-    let prefix = ipnetwork::Ipv4Network::new(
-        ip.parse().map_err(|e| format!("Invalid ap_ip {ip}: {e}"))?,
-        ipnetwork::ipv4_mask_to_prefix(
-            cfg.ap_netmask
-                .parse()
-                .map_err(|e| format!("Invalid ap_netmask {}: {e}", cfg.ap_netmask))?
-        ).map_err(|e| format!("Invalid netmask: {e}"))?
-    ).map_err(|e| format!("Failed to compute network: {e}"))?;
-
+    let prefix = if cfg.ap_ip.contains('/') {
+        cfg.ap_ip.parse::<ipnetwork::Ipv4Network>()
+            .map_err(|e| format!("Invalid ap_ip {}: {e}", cfg.ap_ip))?
+    } else {
+        let ip: std::net::Ipv4Addr = cfg.ap_ip.parse()
+            .map_err(|e| format!("Invalid ap_ip {}: {e}", cfg.ap_ip))?;
+        let mask: std::net::Ipv4Addr = cfg.ap_netmask.parse()
+            .map_err(|e| format!("Invalid ap_netmask {}: {e}", cfg.ap_netmask))?;
+        let prefix_len = ipnetwork::ipv4_mask_to_prefix(mask)
+            .map_err(|e| format!("Invalid netmask: {e}"))?;
+        ipnetwork::Ipv4Network::new(ip, prefix_len)
+            .map_err(|e| format!("Failed to compute network: {e}"))?
+    };
     let cidr = format!("{}", prefix);
 
     // Remove any existing IP on the interface (idempotent)
@@ -41,7 +44,7 @@ pub fn assign_ap_ip(cfg: &Config) -> Result<(), String> {
 }
 
 pub async fn start_ap(cfg: &Config) -> Result<(), String> {
-    let backend = wifi::detect_backend();
+    let backend = wifi::detect_backend(&cfg.wifi_backend);
     match backend {
         wifi::Backend::NetworkManager => {
             networkmanager::start_nm_ap(cfg).await

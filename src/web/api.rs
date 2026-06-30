@@ -122,7 +122,7 @@ pub fn routes() -> Router<AppState> {
 
 async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderMap) -> Json<StatusResponse> {
     let cfg = state.config.read().await;
-    let backend = wifi::detect_backend();
+    let backend = wifi::detect_backend(&cfg.wifi_backend);
     let link = status::get_link_status(&backend, &cfg.sta_interface);
     let uplink_ip = if link.connected {
         status::get_uplink_ip(&cfg.sta_interface)
@@ -149,7 +149,7 @@ async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderM
 
 async fn api_scan(State(state): State<AppState>, _headers: axum::http::HeaderMap) -> Json<ScanResponse> {
     let cfg = state.config.read().await;
-    let backend = wifi::detect_backend();
+    let backend = wifi::detect_backend(&cfg.wifi_backend);
     let nets = scan::scan(&backend, &cfg.sta_interface);
     let link = status::get_link_status(&backend, &cfg.sta_interface);
     Json(ScanResponse {
@@ -173,7 +173,7 @@ async fn api_connect(
         ));
     }
     let cfg = state.config.read().await;
-    let backend = wifi::detect_backend();
+    let backend = wifi::detect_backend(&cfg.wifi_backend);
     match connect::connect(&backend, &req.ssid, req.password.as_deref().unwrap_or(""), &cfg.sta_interface) {
         Ok(msg) => {
             if req.persist.unwrap_or(false) {

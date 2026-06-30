@@ -5,11 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/travel-net --config /etc/travel-net/config.json
+ExecStart=/usr/sbin/travel-net
 Restart=always
 RestartSec=5
 User=root
-AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_ADMIN
 
 [Install]
 WantedBy=multi-user.target
