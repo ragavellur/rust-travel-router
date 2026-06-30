@@ -1,8 +1,8 @@
-Date: Tue, 30 Jun 2026 05:01:44 +0000
+Date: Tue, 30 Jun 2026 05:04:38 +0000
 Label: Travel Net Router APT Repository
 Origin: https://ragavellur.github.io/rust-travel-router
 Suite: stable
 Codename: travel-net
 Architectures: arm64 armhf amd64
 Components: main
-Description: Travel Net Router APT repository - turn any Linux SBC with WiFi into a travel NAT router
+Description: Travel Net Router APT repository

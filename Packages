@@ -4,8 +4,8 @@ Architecture: amd64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Installed-Size: 2500
 Filename: travel-net_0.1.0-1_amd64.deb
-Size: 1143342
-SHA256: 1f22b9cdf3ca866ef4e6222c2d0a021ce62fd054f8af407a307728ee147a4ae4
+Size: 1143774
+SHA256: ab03f3cc126492b81e690ca183646fc2eda94dd8ec720c6c7f5f8216a2feacc0
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -16,8 +16,8 @@ Architecture: arm64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Installed-Size: 2500
 Filename: travel-net_0.1.0-1_arm64.deb
-Size: 1097226
-SHA256: 65b4d2acbddfefac407381f68f42f232b3243e71814d04d8786193d77bb593c9
+Size: 1097384
+SHA256: e587acf581ce7868a8736484a81c02f77a6586917344c5c11d4168b3c5aa21b6
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -28,8 +28,8 @@ Architecture: armhf
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Installed-Size: 2500
 Filename: travel-net_0.1.0-1_armhf.deb
-Size: 1043976
-SHA256: 3b7e0344b31f1e1863eeceb9825a798a41d99f262754263fc5c150c6fbf3092f
+Size: 1044246
+SHA256: dd0926c124541e47a41314e83b1af4c6a6e29a19ff70639fb7b9746794d544f0
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
