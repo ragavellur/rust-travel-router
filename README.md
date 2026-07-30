@@ -84,6 +84,26 @@ sudo dpkg -i travel-net_*.deb
 sudo apt install -f   # install missing dependencies
 ```
 
+### Installation troubleshooting
+
+If `sudo apt install travel-net` fails with a hash or size mismatch like:
+
+```
+Err:1 https://ragavellur.github.io/rust-travel-router ./ travel-net 0.1.0-1
+  File has unexpected size (1114530 != 1097722). Mirror sync in progress?
+  Hashes of expected file:
+   - SHA256:3a4c27b9...
+   - Filesize:1097722
+```
+
+The APT cache is stale. Clear it and retry:
+
+```bash
+sudo rm -rf /var/lib/apt/lists/ragavellur.github.io*
+sudo apt update
+sudo apt install travel-net
+```
+
 ### Post-install
 
 Edit the config to match your hardware:
