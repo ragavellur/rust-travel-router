@@ -118,6 +118,100 @@ Then start the service:
 sudo systemctl enable --now travel-net
 ```
 
+## Deployment Guides
+
+### NanoPi NEO Air & brcmfmac devices (hostapd backend)
+
+For Broadcom WiFi chips (NanoPi NEO Air, Raspberry Pi), the traditional hostapd + dnsmasq + nftables backend is used.
+
+**Steps:**
+
+```bash
+sudo apt install -y hostapd dnsmasq nftables
+
+# Set AP channel to match STA's channel (required — single radio constraint)
+# Find STA channel: iw dev wlan0 link
+sudo sed -i 's/"ap_channel": 0/"ap_channel": 4/' /etc/travel-net/config.json
+
+sudo systemctl disable --now dnsmasq hostapd   # travel-net manages its own
+
+# Enable IP forwarding (one-time)
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-travel-net.conf
+
+sudo systemctl enable --now travel-net
+```
+
+**Channel constraint**: brcmfmac firmware does not support channel switching between virtual interfaces on the same phy. The AP (wlan1) and STA (wlan0) **must** be on the same channel. Set `ap_channel` to match the STA's current channel.
+
+**mDNS discovery:**
+```bash
+sudo apt install avahi-daemon
+cat > /tmp/travel-net.service << 'SVCEOF'
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+  <name replace-wildcards="yes">Travel-Net Router</name>
+  <service>
+    <type>_http._tcp</type>
+    <port>80</port>
+  </service>
+</service-group>
+SVCEOF
+sudo mv /tmp/travel-net.service /etc/avahi/services/
+sudo systemctl enable --now avahi-daemon
+```
+
+### Radxa Cubie A5E/A7A & AIC8800 devices (NM backend)
+
+For AIC8800 WiFi chips (Radxa Cubie A5E SDIO, Cubie A7A USB), `hostapd` fails with *"Failed to set beacon parameters"*. The NetworkManager hotspot backend is required instead.
+
+**Steps:**
+
+```bash
+# 1. Ensure NetworkManager manages all interfaces (critical!)
+sudo sed -i 's/managed=false/managed=true/' /etc/NetworkManager/NetworkManager.conf
+sudo systemctl restart NetworkManager
+
+# 2. Disable conflicting services
+sudo systemctl disable --now dnsmasq hostapd 2>/dev/null || true
+
+# 3. Enable STA auto-connect (connect to upstream WiFi on boot)
+sudo nmcli device wifi connect "YourSSID" password "YourPassword" ifname wlan0
+
+# 4. Enable AP channel auto-detection in config
+sudo sed -i 's/"ap_channel": [0-9]*/"ap_channel": 0/' /etc/travel-net/config.json
+
+# 5. Enable IP forwarding (one-time)
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-travel-net.conf
+
+# 6. Start travel-net
+sudo systemctl enable --now travel-net
+```
+
+**Why `managed=true`?** With `managed=false` (Debian default), NetworkManager's `ifupdown` plugin claims all interfaces before the `keyfile` plugin runs. Creating new hotspot connections via `nmcli connection add` fails with *"settings plugin does not support adding connections"*. Setting `managed=true` fixes this.
+
+**Why `ap_channel: 0`?** AIC8800 is a single-radio chip. The AP and STA share the same phy and must operate on the same frequency. When `ap_channel` is 0, travel-net reads the STA's current channel from `iw dev wlan0 link` and configures the AP to match. Without this, the AP may end up on a different band (e.g., 2.4GHz while STA is on 5GHz), halving throughput and adding latency.
+
+**Troubleshooting NM backend:**
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `settings plugin does not support adding connections` | `managed=false` in NetworkManager.conf | Set `managed=true`, restart NM |
+| `No suitable device found for this connection` | NM hasn't discovered wlan1 yet travel-net includes a retry loop, but after 5 attempts it still fails if NM is slow | Increase NM activation retries in config, or manually: `nmcli connection up travel-net-hotspot` |
+| AP on wrong channel (e.g., 2.4GHz when STA is on 5GHz) | STA channel detection failed (wlan0 wasn't connected yet at boot) | Check `iw dev wlan0 link` — if "Not connected", NM auto-connect may be delayed. travel-net retries detection for 5 seconds |
+| SSID not visible | wlan1 not created or NM hotspot not activated | Run `iw dev wlan1 info` — if `type managed` instead of `type AP`, the hotspot activation failed. Check `journalctl -u travel-net -n 20` |
+| `iw` command not found in systemd service | `/sbin/iw` not in service PATH | Already handled — travel-net uses `Command::new("iw")` which resolves via PATH |
+
+**Read-only root filesystem (eMMC/SD card protection):**
+
+See [Hardening section](#hardening-read-only-root-filesystem) below. When using read-only root, remount rw for changes:
+
+```bash
+sudo mount -o remount,rw /
+# ... make changes ...
+sudo mount -o remount,ro /
+```
+
 ## Configuration
 
 Config file: `/etc/travel-net/config.json`
