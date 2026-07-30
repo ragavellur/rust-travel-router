@@ -189,16 +189,27 @@ ReadWritePaths=/etc/NetworkManager/system-connections
 EOF'
 sudo systemctl daemon-reload
 
-# 6. Enable IP forwarding (one-time)
+# 6. Disable NM periodic Wi-Fi scanning (prevents AP from dropping every 30s on single-radio chips)
+sudo mkdir -p /etc/NetworkManager/conf.d
+sudo bash -c 'cat > /etc/NetworkManager/conf.d/90-no-periodic-scan.conf << "EOF"
+[connectivity]
+interval=0
+
+[wifi]
+scan-rand-mac-address=no
+EOF'
+
+# 8. Enable IP forwarding (one-time)
 echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-travel-net.conf
 
-# 7. Pre-create the NM hotspot profile (needed before locking rootfs ro)
+# 9. Pre-create the NM hotspot profile (needed before locking rootfs ro)
 sudo nmcli connection add type wifi mode ap con-name travel-net-hotspot ifname wlan1 \
   ssid "Travel-Net" wifi.band a wifi-sec.key-mgmt wpa-psk wifi-sec.psk "travelnet" \
   ipv4.method shared ipv4.address 192.168.4.1/24
 
-# 8. Start travel-net
+# 10. Start travel-net
 sudo systemctl enable --now travel-net
+sudo systemctl restart NetworkManager  # Restart NM to apply scan config
 ```
 
 **Why `managed=true`?** With `managed=false` (Debian default), NetworkManager's `ifupdown` plugin claims all interfaces before the `keyfile` plugin runs. Creating new hotspot connections via `nmcli connection add` fails with *"settings plugin does not support adding connections"*. Setting `managed=true` lets NM manage all interfaces.
@@ -232,7 +243,8 @@ After this, lock rootfs ro. On every subsequent boot, travel-net calls `nmcli co
 | `error writing to file ... Read-only file system` | NM's systemd unit has `ProtectSystem=true` making `/etc` read-only for the NM process | Create systemd drop-in: `ReadWritePaths=/etc/NetworkManager/system-connections` (see steps above) |
 | `No suitable device found for this connection` | NM hasn't discovered wlan1 yet. travel-net includes a retry loop, but after 5 attempts it still fails if NM is slow | Increase NM activation retries in config, or manually: `nmcli connection up travel-net-hotspot` |
 | AP on wrong channel (e.g., 2.4GHz when STA is on 5GHz) | STA channel detection failed (wlan0 wasn't connected yet at boot) | Check `iw dev wlan0 link` — if "Not connected", NM auto-connect may be delayed. travel-net retries detection for 5 seconds |
-| SSID not visible | wlan1 not created or NM hotspot not activated | Run `iw dev wlan1 info` — if `type managed` instead of `type AP`, the hotspot activation failed. Check `journalctl -u travel-net -n 20` |
+| SSID not visible (AIC8800 single-radio) | NM periodic background scanning on wlan0 stops the AP on wlan1 every ~30s | Disable NM periodic scanning: `[connectivity] interval=0` in conf.d override (see steps above) |
+| SSID not visible (other causes) | wlan1 not created or NM hotspot not activated | Run `iw dev wlan1 info` — if `type managed` instead of `type AP`, the hotspot activation failed. Check `journalctl -u travel-net -n 20` |
 | AP on different 5GHz channel than STA (read-only rootfs) | Pre-created NM profile omits `wifi.channel` so NM auto-selects; travel-net's detected channel can't be written on ro | Accept the mismatch (both on 5GHz), or remount rw and delete+recreate the profile with the correct channel |
 
 **Read-only root filesystem (eMMC/SD card protection):**
