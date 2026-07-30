@@ -396,17 +396,15 @@ sudo reboot
 
 ### Making changes later
 
-To install packages or edit configs, remount root as read-write:
 ```bash
-sudo mount -o remount,rw /
-```
+# 1. UNLOCK the system to make configuration edits or install packages
+sudo mount -t ext4 -o remount,rw /
 
-When done, re-lock:
-```bash
+# [ Make your travel router changes, update Wi-Fi, or tweak settings here ]
+
+# 2. LOCK the system back down immediately without needing a reboot
 sudo mount -o remount,ro /
 ```
-
-Or simply reboot — it always boots back into read-only mode.
 
 </details>
 
