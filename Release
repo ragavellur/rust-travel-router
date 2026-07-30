@@ -1,4 +1,4 @@
-Date: Tue, 30 Jun 2026 05:16:58 +0000
+Date: Thu, 30 Jul 2026 21:10:00 UTC
 Label: Travel Net Router APT Repository
 Origin: https://ragavellur.github.io/rust-travel-router
 Suite: stable
@@ -6,3 +6,12 @@ Codename: travel-net
 Architectures: arm64 armhf amd64
 Components: main
 Description: Travel Net Router APT repository
+MD5Sum:
+ 29dc0971eee08fb6a2238feab0ec88b0 750 Packages
+ 83e7088ba472514b135947e3e5a46c33 530 Packages.gz
+SHA1:
+ 426de1c9fa54f66ba2e3329d3a3f25616efc9516 750 Packages
+ 9d7fa8daf180b6634ac230e43573dac3d2e76f8f 530 Packages.gz
+SHA256:
+ fcfbac6607f5029334f0c4a701a8674bf58defb0f2007708bf1177f9726f0865 750 Packages
+ 5310b699988fe09d811cef36ec381583d7cb81d1c4db5c0d5e1337797ea0a7be 530 Packages.gz
