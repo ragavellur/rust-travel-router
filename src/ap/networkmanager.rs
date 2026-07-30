@@ -46,18 +46,60 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         .output()
         .map_err(|e| format!("ip link set up failed: {e}"))?;
 
-    // Remove existing travel-net hotspot connection profile
+    // Auto-detect STA channel so AP matches the same frequency (single-radio phy constraint)
+    let (channel, band) = if cfg.sta_interface.is_empty() || cfg.ap_channel != 0 {
+        (cfg.ap_channel, cfg.ap_band.clone())
+    } else {
+        let mut detected = None;
+        for attempt in 1..=10 {
+            if let Some((ch, b)) = detect_sta_channel(&cfg.sta_interface) {
+                tracing::info!("Auto-detected STA channel {ch} ({b}) from {} (attempt {attempt})", cfg.sta_interface);
+                detected = Some((ch, b));
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        detected.unwrap_or_else(|| {
+            tracing::warn!("Could not detect STA channel, letting NM auto-select");
+            (cfg.ap_channel, cfg.ap_band.clone())
+        })
+    };
+
+    // Map ap_band to NM wifi.band
+    // When channel is 0 (auto), always pass None for band to let NM decide
+    let nm_band = if channel == 0 {
+        None
+    } else {
+        match band.as_str() {
+            "a" => Some("a"),
+            "auto" => None,
+            _ => Some("bg"),
+        }
+    };
+
+    // Try to bring up existing connection first (works on read-only rootfs)
+    let already_active = {
+        let r = Command::new("nmcli")
+            .args(["connection", "up", NM_CONNECTION_NAME])
+            .output();
+        match r {
+            Ok(out) if out.status.success() => true,
+            _ => false,
+        }
+    };
+    if already_active {
+        tracing::info!("NM hotspot started (SSID: {}, iface: {})", cfg.ap_ssid, iface);
+        return Ok(());
+    }
+
+    // Connection doesn't exist or failed to activate — create/recreate it
+    // Note: this writes to /etc/NetworkManager/system-connections/ which
+    // requires a writable rootfs. On read-only systems, pre-create once.
     let _ = Command::new("nmcli")
         .args(["connection", "delete", NM_CONNECTION_NAME])
         .output();
 
-    // Map ap_band to NM wifi.band
-    let nm_band = match cfg.ap_band.as_str() {
-        "a" => Some("a"),
-        "auto" => None,
-        _ => Some("bg"),
-    };
-    let channel_str = cfg.ap_channel.to_string();
+    let channel_str = channel.to_string();
     let mut args = vec![
         "connection", "add",
         "type", "wifi",
@@ -65,10 +107,13 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         "con-name", NM_CONNECTION_NAME,
         "ifname", iface,
         "ssid", &cfg.ap_ssid,
-        "wifi.channel", &channel_str,
         "ipv4.method", "shared",
         "ipv4.address", &cidr,
     ];
+    if channel != 0 {
+        args.push("wifi.channel");
+        args.push(&channel_str);
+    }
     if let Some(band) = nm_band {
         args.push("wifi.band");
         args.push(band);
@@ -89,14 +134,23 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         return Err(format!("Failed to create NM hotspot: {stderr}"));
     }
 
-    // Activate hotspot
-    let result = Command::new("nmcli")
-        .args(["connection", "up", NM_CONNECTION_NAME])
-        .output()
-        .map_err(|e| format!("nmcli up failed: {e}"))?;
-    if !result.status.success() {
-        let stderr = String::from_utf8_lossy(&result.stderr);
-        return Err(format!("Failed to activate NM hotspot: {stderr}"));
+    // Activate hotspot (retry: NM may not have discovered wlan1 yet)
+    let mut last_err = String::new();
+    for attempt in 1..=5 {
+        let result = Command::new("nmcli")
+            .args(["connection", "up", NM_CONNECTION_NAME])
+            .output()
+            .map_err(|e| format!("nmcli up failed: {e}"))?;
+        if result.status.success() {
+            last_err.clear();
+            break;
+        }
+        last_err = String::from_utf8_lossy(&result.stderr).to_string();
+        tracing::warn!("NM hotspot activation failed (attempt {attempt}): {last_err}");
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    if !last_err.is_empty() {
+        return Err(format!("Failed to activate NM hotspot: {last_err}"));
     }
 
     tracing::info!("NM hotspot started (SSID: {}, iface: {})", cfg.ap_ssid, iface);
@@ -121,4 +175,47 @@ pub fn is_running() -> bool {
             out.lines().any(|l| l.trim() == NM_CONNECTION_NAME)
         })
         .unwrap_or(false)
+}
+
+fn detect_sta_channel(sta_iface: &str) -> Option<(u8, String)> {
+    let output = Command::new("iw")
+        .args(["dev", sta_iface, "link"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let line = line.trim();
+        if let Some(freq_str) = line.strip_prefix("freq:") {
+            let freq: u32 = freq_str.trim().parse().ok()?;
+            return freq_to_channel_and_band(freq);
+        }
+    }
+    None
+}
+
+fn freq_to_channel_and_band(freq: u32) -> Option<(u8, String)> {
+    match freq {
+        2412..=2472 => {
+            let ch = ((freq - 2412) / 5 + 1) as u8;
+            Some((ch, "bg".into()))
+        }
+        2484 => Some((14, "bg".into())),
+        5180..=5825 => {
+            let ch = match freq {
+                5180 => 36, 5200 => 40, 5220 => 44, 5240 => 48,
+                5260 => 52, 5280 => 56, 5300 => 60, 5320 => 64,
+                5500 => 100, 5520 => 104, 5540 => 108, 5560 => 112,
+                5580 => 116, 5600 => 120, 5620 => 124, 5640 => 128,
+                5660 => 132, 5680 => 136, 5700 => 140,
+                5745 => 149, 5765 => 153, 5785 => 157, 5805 => 161,
+                5825 => 165,
+                _ => return None,
+            };
+            Some((ch, "a".into()))
+        }
+        _ => None,
+    }
 }

@@ -181,26 +181,59 @@ sudo nmcli device wifi connect "YourSSID" password "YourPassword" ifname wlan0
 # 4. Enable AP channel auto-detection in config
 sudo sed -i 's/"ap_channel": [0-9]*/"ap_channel": 0/' /etc/travel-net/config.json
 
-# 5. Enable IP forwarding (one-time)
+# 5. Allow NM to write hotspot profiles (required — NM's systemd unit has ProtectSystem=true)
+echo radxa | sudo -S mkdir -p /etc/systemd/system/NetworkManager.service.d
+echo radxa | sudo -S bash -c 'cat > /etc/systemd/system/NetworkManager.service.d/override.conf << "EOF"
+[Service]
+ReadWritePaths=/etc/NetworkManager/system-connections
+EOF'
+sudo systemctl daemon-reload
+
+# 6. Enable IP forwarding (one-time)
 echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-travel-net.conf
 
-# 6. Start travel-net
+# 7. Pre-create the NM hotspot profile (needed before locking rootfs ro)
+sudo nmcli connection add type wifi mode ap con-name travel-net-hotspot ifname wlan1 \
+  ssid "Travel-Net" wifi.band a wifi-sec.key-mgmt wpa-psk wifi-sec.psk "travelnet" \
+  ipv4.method shared ipv4.address 192.168.4.1/24
+
+# 8. Start travel-net
 sudo systemctl enable --now travel-net
 ```
 
-**Why `managed=true`?** With `managed=false` (Debian default), NetworkManager's `ifupdown` plugin claims all interfaces before the `keyfile` plugin runs. Creating new hotspot connections via `nmcli connection add` fails with *"settings plugin does not support adding connections"*. Setting `managed=true` fixes this.
+**Why `managed=true`?** With `managed=false` (Debian default), NetworkManager's `ifupdown` plugin claims all interfaces before the `keyfile` plugin runs. Creating new hotspot connections via `nmcli connection add` fails with *"settings plugin does not support adding connections"*. Setting `managed=true` lets NM manage all interfaces.
+
+**Why the systemd override?** NM's systemd unit on Radxa Debian has `ProtectSystem=true`, which makes `/etc` read-only within the NM process's mount namespace. Without `ReadWritePaths=/etc/NetworkManager/system-connections`, any `nmcli connection add` call fails with *"error writing to file ... Read-only file system"* even when the rootfs is writable.
 
 **Why `ap_channel: 0`?** AIC8800 is a single-radio chip. The AP and STA share the same phy and must operate on the same frequency. When `ap_channel` is 0, travel-net reads the STA's current channel from `iw dev wlan0 link` and configures the AP to match. Without this, the AP may end up on a different band (e.g., 2.4GHz while STA is on 5GHz), halving throughput and adding latency.
+
+**Read-only rootfs setup (pre-create the NM profile once):**
+
+If you lock rootfs to read-only (see [Hardening section](#hardening-read-only-root-filesystem)), you must pre-create the NM hotspot connection while rootfs is writable. travel-net will then activate it on boot without writing anything:
+
+```bash
+# Run this ONCE while rootfs is writable
+sudo nmcli connection add type wifi mode ap con-name travel-net-hotspot ifname wlan1 \
+  ssid "Travel-Net" wifi.band a \
+  wifi-sec.key-mgmt wpa-psk wifi-sec.psk "travelnet" \
+  ipv4.method shared ipv4.address 192.168.4.1/24
+
+# Omit wifi.channel entirely when ap_channel is 0 (auto).
+# NM does not accept channel=0 — if you don't pass it, NM auto-selects.
+```
+
+After this, lock rootfs ro. On every subsequent boot, travel-net calls `nmcli connection up travel-net-hotspot` which activates the pre-created profile without disk writes.
 
 **Troubleshooting NM backend:**
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `settings plugin does not support adding connections` | `managed=false` in NetworkManager.conf | Set `managed=true`, restart NM |
-| `No suitable device found for this connection` | NM hasn't discovered wlan1 yet travel-net includes a retry loop, but after 5 attempts it still fails if NM is slow | Increase NM activation retries in config, or manually: `nmcli connection up travel-net-hotspot` |
+| `error writing to file ... Read-only file system` | NM's systemd unit has `ProtectSystem=true` making `/etc` read-only for the NM process | Create systemd drop-in: `ReadWritePaths=/etc/NetworkManager/system-connections` (see steps above) |
+| `No suitable device found for this connection` | NM hasn't discovered wlan1 yet. travel-net includes a retry loop, but after 5 attempts it still fails if NM is slow | Increase NM activation retries in config, or manually: `nmcli connection up travel-net-hotspot` |
 | AP on wrong channel (e.g., 2.4GHz when STA is on 5GHz) | STA channel detection failed (wlan0 wasn't connected yet at boot) | Check `iw dev wlan0 link` — if "Not connected", NM auto-connect may be delayed. travel-net retries detection for 5 seconds |
 | SSID not visible | wlan1 not created or NM hotspot not activated | Run `iw dev wlan1 info` — if `type managed` instead of `type AP`, the hotspot activation failed. Check `journalctl -u travel-net -n 20` |
-| `iw` command not found in systemd service | `/sbin/iw` not in service PATH | Already handled — travel-net uses `Command::new("iw")` which resolves via PATH |
+| AP on different 5GHz channel than STA (read-only rootfs) | Pre-created NM profile omits `wifi.channel` so NM auto-selects; travel-net's detected channel can't be written on ro | Accept the mismatch (both on 5GHz), or remount rw and delete+recreate the profile with the correct channel |
 
 **Read-only root filesystem (eMMC/SD card protection):**
 

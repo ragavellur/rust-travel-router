@@ -17,10 +17,15 @@ pub async fn apply_config(path: &Path, new_cfg: Config) -> Result<(), Vec<String
     // Save new config
     config::save(path, &new_cfg).map_err(|e| vec![e.to_string()])?;
 
+    // Apply power mode tuning
+    firewall::apply_performance_tuning(&new_cfg);
+
     let backend = wifi::detect_backend(&new_cfg.wifi_backend);
     match backend {
         wifi::Backend::NetworkManager => {
-            crate::ap::networkmanager::stop_nm_ap().await;
+            // stop_nm_ap deletes the NM profile (writes to disk).
+            // On ro rootfs, skip delete and just call start_nm_ap which
+            // tries 'up' first before falling back to create.
             crate::ap::networkmanager::start_nm_ap(&new_cfg).await.map_err(|e| vec![e])?;
         }
         wifi::Backend::WpaSupplicant => {
