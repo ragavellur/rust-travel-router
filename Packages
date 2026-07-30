@@ -4,10 +4,10 @@ Architecture: arm64
 Maintainer: Raga <ragavellur@users.noreply.github.com>
 Depends: network-manager, wpasupplicant, iw
 Filename: ./travel-net_0.1.0-1_arm64.deb
-Size: 1116046
-MD5sum: c4d24cae97d2c753caa1c6a9007a09d1
-SHA1: 9c1384ca47653203c413743a69eafa67cfc7aeee
-SHA256: ffb1ec495e1391213fac361ebdb82bc1cf7c9b23ed1df66b18b94d60ec835c53
+Size: 1116982
+MD5sum: 2ebfcc33a9c7a6f4baf46e2843210a88
+SHA1: cabf697e75aab76ebcbea755fcc3ad436361c049
+SHA256: a0d8344112512fda989d134f4d1708c485527513dee87a9aab9f17c1b44855f6
 Section: net
 Priority: optional
 Description: Travel NAT Router
