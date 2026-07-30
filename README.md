@@ -264,6 +264,58 @@ cargo run -- --config config/etc/travel-net/config.json
 
 The `config.json` is pre-configured for a local test environment. Adjust interfaces as needed.
 
+## Hardening: Read-Only Root Filesystem
+
+Protect the SD card/eMMC from corruption when power is pulled abruptly:
+
+<details>
+<summary>Click to expand steps</summary>
+
+**1. Open your filesystem configuration file**
+```bash
+sudo nano /etc/fstab
+```
+
+**2. Find your third line that looks like this:**
+```
+UUID=7cf9f135-82db-4514-af4e-5817cb922fec / ext4 defaults 0 1
+```
+
+**3. Change "defaults" to "defaults,noatime,ro"**
+```
+UUID=7cf9f135-82db-4514-af4e-5817cb922fec / ext4 defaults,noatime,ro 0 1
+```
+
+**4. Paste these lines at the absolute bottom to force system writes into RAM:**
+```
+tmpfs   /tmp        tmpfs   defaults,noatime,nosuid,nodev,mode=1777   0   0
+tmpfs   /var/log    tmpfs   defaults,noatime,nosuid,nodev,mode=0755   0   0
+tmpfs   /var/tmp    tmpfs   defaults,noatime,nosuid,nodev,mode=1777   0   0
+```
+
+**5. Save and exit** (Ctrl+O, Enter, Ctrl+X)
+
+**6. Reboot the board to lock it down safely**
+```bash
+sudo reboot
+```
+
+### Making changes later
+
+To install packages or edit configs, remount root as read-write:
+```bash
+sudo mount -o remount,rw /
+```
+
+When done, re-lock:
+```bash
+sudo mount -o remount,ro /
+```
+
+Or simply reboot — it always boots back into read-only mode.
+
+</details>
+
 ## License
 
 MIT
