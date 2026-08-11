@@ -1,13 +1,13 @@
 Package: travel-net
 Version: 0.1.0-1
-Architecture: arm64
+Architecture: amd64
 Maintainer: Raga <ragavellur@users.noreply.github.com>
 Depends: network-manager, wpasupplicant, iw
-Filename: pool/main/travel-net_0.1.0-1_arm64.deb
-Size: 1117706
-MD5sum: d3a16230e35ca1f78c7ce1a33ec7a6f0
-SHA1: 7c280bfa032eb50f8e05ee7f09a2153b39584c16
-SHA256: da21b5e511f48dffe901939d9afad75a268219b4370d413b0fdb577513885625
+Filename: pool/main/travel-net_0.1.0-1_amd64.deb
+Size: 1163998
+MD5sum: cfd069d11ae71baf7a276fbd73ebfd3d
+SHA1: b505ab38dfe2773ce088d0ef56d11f5e8b9768e0
+SHA256: 246c3ff1e1c8420c7218a92b43f383623e12fa43b298f3192a5f9d4aa8c4056a
 Section: net
 Priority: optional
 Description: Travel NAT Router

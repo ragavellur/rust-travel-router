@@ -5,9 +5,41 @@ Maintainer: Raga <ragavellur@users.noreply.github.com>
 Depends: network-manager, wpasupplicant, iw
 Filename: ./travel-net_0.1.0-1_arm64.deb
 Size: 1117706
-MD5sum: fde83f8df4906a333366343e5bae9d2c
-SHA1: 2101115ac875f62c4ffa8911a9e5bc11faad19b9
-SHA256: 12f4634a6b697fc9ba98fd29ea5c0496426b6a0da7b77de96c9d0bde5f54da83
+MD5sum: d3a16230e35ca1f78c7ce1a33ec7a6f0
+SHA1: 7c280bfa032eb50f8e05ee7f09a2153b39584c16
+SHA256: da21b5e511f48dffe901939d9afad75a268219b4370d413b0fdb577513885625
+Section: net
+Priority: optional
+Description: Travel NAT Router
+ Turn any Linux SBC with WiFi into a portable NAT router
+ with a web UI.
+
+Package: travel-net
+Version: 0.1.0-1
+Architecture: armhf
+Maintainer: Raga <ragavellur@users.noreply.github.com>
+Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw
+Filename: ./travel-net_0.1.0-1_armhf.deb
+Size: 1063860
+MD5sum: db38ef055ea681f116e844cd6fe52208
+SHA1: ebcbfeea61d95cb89eaac876533fe7b2739bcd98
+SHA256: b7c25926bdf2db4e56ca1db954527f9e5d6aa2accc0a6435824870f7dbfc662d
+Section: net
+Priority: optional
+Description: Travel NAT Router
+ Turn any Linux SBC with WiFi into a portable NAT router
+ with a web UI.
+
+Package: travel-net
+Version: 0.1.0-1
+Architecture: amd64
+Maintainer: Raga <ragavellur@users.noreply.github.com>
+Depends: network-manager, wpasupplicant, iw
+Filename: ./travel-net_0.1.0-1_amd64.deb
+Size: 1163998
+MD5sum: cfd069d11ae71baf7a276fbd73ebfd3d
+SHA1: b505ab38dfe2773ce088d0ef56d11f5e8b9768e0
+SHA256: 246c3ff1e1c8420c7218a92b43f383623e12fa43b298f3192a5f9d4aa8c4056a
 Section: net
 Priority: optional
 Description: Travel NAT Router
