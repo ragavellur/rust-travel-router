@@ -22,7 +22,7 @@
 
 ### Radxa Cubie A5E
 - **OS**: Debian 11 Bullseye, arm64, kernel 5.15.147
-- **IP**: 192.168.1.35
+- **IP**: 192.168.200.100 (STA on RagaNet), also 192.168.4.1 (AP side)
 - **User/Pass**: radxa / radxa
 - **WiFi**: AIC8800D80 (SDIO, single MAC: 94:ba:06:49:ae:38), driver `aic8800_fdrv`
 - **AP backend**: NetworkManager hotspot (NM backend) — hostapd FAILS with "Failed to set beacon parameters"
@@ -293,11 +293,21 @@ Kernel default is `net.ipv4.ip_forward=0` on Debian. Without it, all forwarded A
 ### dnsmasq "unknown interface" race
 If dnsmasq starts before the AP interface has its IP assigned, it fails with "unknown interface wlan1" and exits. The NM backend avoids this entirely by using NM's shared mode instead of dnsmasq.
 
+### Read-only rootfs interactions (NM backend)
+When rootfs is `ro`, several NM features that write at runtime break silently:
+- **DHCP leases**: NM's dnsmasq writes to `/var/lib/NetworkManager/dnsmasq-*.leases`. Must be tmpfs.
+- **Upstream DNS**: NM writes `server=` files to `/etc/NetworkManager/dnsmasq-shared.d/`. Must pre-create `01-upstream.conf` statically.
+- **`/etc/resolv.conf`**: NM overwrites this with upstream DNS servers. Must symlink to systemd-resolved stub and set `dns=systemd-resolved`.
+- **Hotspot profile creation**: `nmcli connection add` writes to `/etc/NetworkManager/system-connections/`. Must pre-create profile before locking ro.
+- **NM systemd unit**: `ProtectSystem=true` makes `/etc` ro inside NM even on rw rootfs. `ReadWritePaths` override needed regardless.
+
 ### NetworkManager interference with hostapd
 On NM devices (Cubie A5E/A7A), NM manages all interfaces by default. The NM backend handles this correctly. But if an NM device runs the hostapd path, NM may interfere with wlan1. Unlikely in practice since the hostapd path is only used on wpa_supplicant devices.
 
 ### APT repo is flat-file (not pool/ structure)
 The gh-pages branch has `.deb` files at root, NOT in `pool/main/`. The `Packages` file is generated manually. `apt-ftparchive` may not work with flat repos — use manual generation.
+- **Release `Date` field MUST be UTC** (`+0000`, `UTC`, `GMT`, or `Z`). A local offset (e.g. `+0530`) makes apt warn "Invalid 'Date' entry" and fall back to stale cached package lists — symptoms: old package versions, or `travel-net` resolving to the wrong arch. Use `date -R -u`.
+- Flat repo `Packages` mixes all 3 arch stanzas. On systems with foreign arches enabled (e.g. 32-bit RPi OS enables `arm64`), pin the source: `deb [trusted=yes arch=armhf] ...`. See README "Multi-arch systems".
 
 ## File Locations
 
@@ -394,11 +404,16 @@ iw dev wlan0 scan | grep -E "SSID|freq|signal"
 - [x] IP forwarding enabled at startup
 - [x] mDNS discovery publishing
 - [x] 3-arch APT repo on GitHub Pages
+- [x] armhf/arm64/amd64 .debs with per-arch deps (armhf=hostapd, arm64/amd64=NM); fixed flat repo Release Date to UTC
+- [x] README restructured: ro hardening now optional, clean step numbering (1-12)
+- [x] Client disconnect fix: `/var/lib/NetworkManager` as tmpfs for dnsmasq leases
+- [x] DNS fix: static upstream config in dnsmasq-shared.d, `dns=systemd-resolved`, resolv.conf symlink
+- [x] A5E rootfs locked ro in fstab (needs reboot to take effect)
 
 ## Hardware IPs Quick Reference
 
 | Device | IP | User | Password | Arch | Backend |
 |--------|-----|------|----------|------|---------|
 | NanoPi NEO Air | 192.168.200.114 | root | raga@098 | armhf | hostapd |
-| Cubie A5E | 192.168.1.35 | radxa | radxa | arm64 | NM |
+| Cubie A5E | 192.168.200.100 (STA) / 192.168.4.1 (AP) | radxa | radxa | arm64 | NM |
 | Cubie A7A | 192.168.200.189 | radxa | radxa | arm64 | NM (not yet) |

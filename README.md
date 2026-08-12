@@ -75,6 +75,25 @@ sudo apt update
 sudo apt install travel-net
 ```
 
+> **Multi-arch systems** (e.g. 32-bit Raspberry Pi OS, which enables `arm64` as a
+> foreign architecture): pin the repo to your native arch so `apt` picks the
+> right package instead of a foreign-arch one. Check with `dpkg --print-architecture`,
+> then add `arch=<your-arch>` to the source line:
+>
+> ```bash
+> # armhf (32-bit Pi, NanoPi)
+> echo "deb [trusted=yes arch=armhf] https://ragavellur.github.io/rust-travel-router/ ./" | \
+>   sudo tee /etc/apt/sources.list.d/travel-net.list
+> # arm64 (Cubie A5E/A7A)
+> # echo "deb [trusted=yes arch=arm64] https://ragavellur.github.io/rust-travel-router/ ./" | \
+> #   sudo tee /etc/apt/sources.list.d/travel-net.list
+> sudo apt update
+> sudo apt install travel-net
+> ```
+>
+> The repo hosts `armhf`, `arm64`, and `amd64` packages. The `armhf` package uses
+> the hostapd backend (RPi, NanoPi); `arm64`/`amd64` use the NetworkManager backend.
+
 ### Via .deb package
 
 Download the latest `.deb` from [releases](https://github.com/ragavellur/rust-travel-router/releases) and install:
@@ -118,7 +137,62 @@ Then start the service:
 sudo systemctl enable --now travel-net
 ```
 
-## Deployment Guides
+### Uninstall
+
+Stop the service, remove the package, then clean up leftover files.
+
+#### Via APT package
+
+```bash
+sudo systemctl stop travel-net
+sudo apt remove --purge travel-net
+```
+
+#### Via .deb package
+
+```bash
+sudo systemctl stop travel-net
+sudo dpkg -r travel-net       # or: sudo dpkg -P travel-net (also purge config)
+```
+
+#### Manual install
+
+Remove the binary, service unit and config:
+
+```bash
+sudo systemctl stop travel-net
+sudo rm -f /usr/local/bin/travel-net /usr/sbin/travel-net
+sudo rm -f /lib/systemd/system/travel-net.service /etc/systemd/system/travel-net.service
+sudo rm -rf /etc/travel-net
+sudo systemctl daemon-reload
+```
+
+#### Clean up leftovers
+
+```bash
+# APT source entry (if you added it)
+sudo rm -f /etc/apt/sources.list.d/travel-net.list
+
+# NetworkManager: forget the hotspot profile and any unmanaged-interface overrides
+sudo nmcli connection delete Cubie-AP 2>/dev/null || true
+sudo rm -f /etc/NetworkManager/conf.d/98-travel-net-unmanaged.conf
+sudo rm -f /etc/NetworkManager/conf.d/unmanaged-wlan1.conf
+
+# Remove any leftover AP interface
+sudo iw dev wlan1 del 2>/dev/null || true
+
+# Firewall: flush travel-net's nftables rules and reset IP forwarding
+sudo nft flush ruleset
+sudo sysctl -w net.ipv4.ip_forward=0
+sudo rm -f /etc/sysctl.d/99-travel-net.conf
+sudo rm -f /etc/modprobe.d/aic8800-travel-net.conf
+```
+
+> **Read-only rootfs note:** if you hardened the rootfs to `ro` (see the
+> *Optional: Read-Only Root Filesystem* section), the service/config files above
+> can only be deleted while the rootfs is unlocked (`sudo mount -o remount,rw /`).
+> Also remove the `ro` option from `/etc/fstab` if you no longer want a locked
+> rootfs.
 
 ### NanoPi NEO Air & brcmfmac devices (hostapd backend)
 
@@ -165,97 +239,99 @@ sudo systemctl enable --now avahi-daemon
 
 For AIC8800 WiFi chips (Radxa Cubie A5E SDIO, Cubie A7A USB), `hostapd` fails with *"Failed to set beacon parameters"*. The NetworkManager hotspot backend is required instead.
 
-**Steps:**
+**Steps (run on a writable rootfs, in order):**
 
 ```bash
-# 1. Ensure NetworkManager manages all interfaces (critical!)
-sudo sed -i 's/managed=false/managed=true/' /etc/NetworkManager/NetworkManager.conf
-sudo systemctl restart NetworkManager
+# === PART 1: SYSTEM CONFIGURATION (one-time) ===
 
-# 2. Disable conflicting services
-sudo systemctl disable --now dnsmasq hostapd 2>/dev/null || true
-
-# 3. Enable STA auto-connect (connect to upstream WiFi on boot)
-sudo nmcli device wifi connect "YourSSID" password "YourPassword" ifname wlan0
-
-# 4. Enable AP channel auto-detection in config
-sudo sed -i 's/"ap_channel": [0-9]*/"ap_channel": 0/' /etc/travel-net/config.json
-
-# 5. Allow NM to write hotspot profiles (required — NM's systemd unit has ProtectSystem=true)
-echo radxa | sudo -S mkdir -p /etc/systemd/system/NetworkManager.service.d
-echo radxa | sudo -S bash -c 'cat > /etc/systemd/system/NetworkManager.service.d/override.conf << "EOF"
+# 1. Allow NM to write hotspot profiles (overrides ProtectSystem=true in systemd unit)
+sudo mkdir -p /etc/systemd/system/NetworkManager.service.d
+sudo bash -c 'cat > /etc/systemd/system/NetworkManager.service.d/override.conf << "EOF"
 [Service]
 ReadWritePaths=/etc/NetworkManager/system-connections
 EOF'
-sudo systemctl daemon-reload
 
-# 6. Disable NM periodic Wi-Fi scanning (prevents AP from dropping every 30s on single-radio chips)
-sudo mkdir -p /etc/NetworkManager/conf.d
+# 2. Ensure NetworkManager manages all interfaces
+sudo sed -i 's/managed=false/managed=true/' /etc/NetworkManager/NetworkManager.conf
+
+# 3. Remove ifupdown plugin (it blocks connection creation even with managed=true)
+sudo sed -i 's/plugins=ifupdown,keyfile/plugins=keyfile/' /etc/NetworkManager/NetworkManager.conf
+
+# 4. Disable NM periodic Wi-Fi scanning (prevents AP from dropping every 30s on single-radio)
 sudo bash -c 'cat > /etc/NetworkManager/conf.d/90-no-periodic-scan.conf << "EOF"
 [connectivity]
 interval=0
-
 [wifi]
 scan-rand-mac-address=no
 EOF'
 
-# 8. Enable IP forwarding (one-time)
+# 5. Set dns=systemd-resolved so NM pushes DNS to systemd-resolved (needed for ro rootfs — NM can't write /etc/resolv.conf)
+sudo sed -i '/^\[main\]/a dns=systemd-resolved' /etc/NetworkManager/NetworkManager.conf
+
+# 6. Enable IP forwarding (one-time permanent)
 echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/99-travel-net.conf
 
-# 9. Pre-create the NM hotspot profile (needed before locking rootfs ro)
+# 7. Reload systemd and restart NM to apply all changes
+sudo systemctl daemon-reload
+sudo systemctl restart NetworkManager
+
+# === PART 2: NETWORK SETUP ===
+
+# 8. Connect to upstream WiFi (STA mode) — reboots will auto-connect
+sudo nmcli device wifi connect "YourSSID" password "YourPassword" ifname wlan0
+
+# 9. Pre-create the NM hotspot profile
 sudo nmcli connection add type wifi mode ap con-name travel-net-hotspot ifname wlan1 \
   ssid "Travel-Net" wifi.band a wifi-sec.key-mgmt wpa-psk wifi-sec.psk "travelnet" \
   ipv4.method shared ipv4.address 192.168.4.1/24
 
-# 10. Start travel-net
+# 10. Pre-create static upstream DNS config for NM's internal dnsmasq
+sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+sudo bash -c 'cat > /etc/NetworkManager/dnsmasq-shared.d/01-upstream.conf << "EOF"
+server=8.8.8.8
+server=1.1.1.1
+EOF'
+
+# 11. Enable AP channel auto-detection (matches STA channel automatically)
+sudo sed -i 's/"ap_channel": [0-9]*/"ap_channel": 0/' /etc/travel-net/config.json
+
+# 12. Start travel-net
 sudo systemctl enable --now travel-net
-sudo systemctl restart NetworkManager  # Restart NM to apply scan config
 ```
 
-**Why `managed=true`?** With `managed=false` (Debian default), NetworkManager's `ifupdown` plugin claims all interfaces before the `keyfile` plugin runs. Creating new hotspot connections via `nmcli connection add` fails with *"settings plugin does not support adding connections"*. Setting `managed=true` lets NM manage all interfaces.
-
-**Why the systemd override?** NM's systemd unit on Radxa Debian has `ProtectSystem=true`, which makes `/etc` read-only within the NM process's mount namespace. Without `ReadWritePaths=/etc/NetworkManager/system-connections`, any `nmcli connection add` call fails with *"error writing to file ... Read-only file system"* even when the rootfs is writable.
-
-**Why `ap_channel: 0`?** AIC8800 is a single-radio chip. The AP and STA share the same phy and must operate on the same frequency. When `ap_channel` is 0, travel-net reads the STA's current channel from `iw dev wlan0 link` and configures the AP to match. Without this, the AP may end up on a different band (e.g., 2.4GHz while STA is on 5GHz), halving throughput and adding latency.
-
-**Read-only rootfs setup (pre-create the NM profile once):**
-
-If you lock rootfs to read-only (see [Hardening section](#hardening-read-only-root-filesystem)), you must pre-create the NM hotspot connection while rootfs is writable. travel-net will then activate it on boot without writing anything:
-
+After travel-net starts, verify:
 ```bash
-# Run this ONCE while rootfs is writable
-sudo nmcli connection add type wifi mode ap con-name travel-net-hotspot ifname wlan1 \
-  ssid "Travel-Net" wifi.band a \
-  wifi-sec.key-mgmt wpa-psk wifi-sec.psk "travelnet" \
-  ipv4.method shared ipv4.address 192.168.4.1/24
-
-# Omit wifi.channel entirely when ap_channel is 0 (auto).
-# NM does not accept channel=0 — if you don't pass it, NM auto-selects.
+journalctl -u travel-net --no-pager -n 10  # AP should start
+iw dev wlan1 info                      # Should show type AP, matching STA channel
+host google.com 192.168.4.1            # DNS should resolve
 ```
 
-After this, lock rootfs ro. On every subsequent boot, travel-net calls `nmcli connection up travel-net-hotspot` which activates the pre-created profile without disk writes.
+**Why each step?**
 
-**Troubleshooting NM backend:**
+| Step | Why |
+|------|------|
+| `ReadWritePaths` override | NM's Debian systemd unit has `ProtectSystem=true`, making `/etc` read-only inside NM. Without this, `nmcli connection add` fails with *"Read-only file system"* even on rw rootfs. |
+| `managed=true` | Without it, the `ifupdown` plugin claims all interfaces and the `keyfile` plugin can't add hotspot connections. |
+| `plugins=keyfile` | The `ifupdown` plugin causes *"settings plugin does not support adding connections"* even with `managed=true`. Unnecessary since this device doesn't use `/etc/network/interfaces`. |
+| No periodic scan | AIC8800 is a single-radio chip — scanning on wlan0 stops the AP on wlan1 every 30s. Disabling periodic scans keeps the AP stable. |
+| `dns=systemd-resolved` | NM pushes DNS to systemd-resolved instead of writing `/etc/resolv.conf`. Required on ro rootfs; recommended for all setups. |
+| `ap_channel: 0` | AP and STA must share the same channel. travel-net auto-detects the STA's channel from `iw dev wlan0 link` and sets the AP to match. |
+| Pre-created NM profile | Required on ro (NM can't write new profiles). Harmless on rw — travel-net uses read-only `nmcli connection up` instead of write. |
+| Static dnsmasq upstream config | NM writes `server=` entries to dnsmasq-shared.d at runtime but can't on ro rootfs. Without upstream DNS, clients connect but can't browse. Pre-creating fixes this on both rw and ro. |
+
+**Troubleshooting:**
 
 | Symptom | Cause | Fix |
-|---------|-------|-----|
-| `settings plugin does not support adding connections` | `managed=false` in NetworkManager.conf | Set `managed=true`, restart NM |
-| `error writing to file ... Read-only file system` | NM's systemd unit has `ProtectSystem=true` making `/etc` read-only for the NM process | Create systemd drop-in: `ReadWritePaths=/etc/NetworkManager/system-connections` (see steps above) |
-| `No suitable device found for this connection` | NM hasn't discovered wlan1 yet. travel-net includes a retry loop, but after 5 attempts it still fails if NM is slow | Increase NM activation retries in config, or manually: `nmcli connection up travel-net-hotspot` |
-| AP on wrong channel (e.g., 2.4GHz when STA is on 5GHz) | STA channel detection failed (wlan0 wasn't connected yet at boot) | Check `iw dev wlan0 link` — if "Not connected", NM auto-connect may be delayed. travel-net retries detection for 5 seconds |
-| SSID not visible (AIC8800 single-radio) | NM periodic background scanning on wlan0 stops the AP on wlan1 every ~30s | Disable NM periodic scanning: `[connectivity] interval=0` in conf.d override (see steps above) |
-| SSID not visible (other causes) | wlan1 not created or NM hotspot not activated | Run `iw dev wlan1 info` — if `type managed` instead of `type AP`, the hotspot activation failed. Check `journalctl -u travel-net -n 20` |
-| AP on different 5GHz channel than STA (read-only rootfs) | Pre-created NM profile omits `wifi.channel` so NM auto-selects; travel-net's detected channel can't be written on ro | Accept the mismatch (both on 5GHz), or remount rw and delete+recreate the profile with the correct channel |
-
-**Read-only root filesystem (eMMC/SD card protection):**
-
-See [Hardening section](#hardening-read-only-root-filesystem) below. When using read-only root, remount rw for changes:
-
-```bash
-sudo mount -o remount,rw /
-# ... make changes ...
-sudo mount -o remount,ro /
-```
+|---------|-------|------|
+| `settings plugin does not support adding connections` | `ifupdown` plugin still in `plugins=` line | Change to `plugins=keyfile` and restart NM |
+| `error writing ... Read-only file system` | Missing `ReadWritePaths` override | Check `/etc/systemd/system/NetworkManager.service.d/override.conf` exists |
+| `No suitable device found` | NM hasn't discovered wlan1 yet | travel-net retries 5 times; manually: `nmcli connection up travel-net-hotspot` |
+| SSID not visible | NM periodic scanning stopping the AP | Verify `90-no-periodic-scan.conf` exists; restart NM |
+| `iw` command errors in logs | `iw` not in PATH | Already handled — travel-net uses `Command::new("iw")` which resolves via systemd PATH (`/sbin`) |
+| AP channel doesn't match STA | STA wasn't connected when detection ran | travel-net retries 5s; if still disconnected, NM auto-selects. Both on 5GHz, acceptable. |
+| Client connects then disconnects repeatedly | Only on ro rootfs — dnsmasq can't write DHCP leases | See [Optional: Read-Only Rootfs](#optional-read-only-root-filesystem) |
+| Client connects but can't browse | Only on ro rootfs — dnsmasq has no upstream DNS | Verify step 9 completed. If missing, see [Optional: Read-Only Rootfs](#optional-read-only-root-filesystem) |
+| A5E can't resolve hostnames | `/etc/resolv.conf` empty on ro rootfs | See [Optional: Read-Only Rootfs](#optional-read-only-root-filesystem) |
 
 ## Configuration
 
@@ -403,55 +479,54 @@ cargo run -- --config config/etc/travel-net/config.json
 
 The `config.json` is pre-configured for a local test environment. Adjust interfaces as needed.
 
-## Hardening: Read-Only Root Filesystem
+## Optional: Read-Only Root Filesystem
 
-Protect the SD card/eMMC from corruption when power is pulled abruptly:
+Protect the SD card/eMMC from corruption when power is pulled abruptly. **Skip this section if you prefer a writable rootfs.** The main deployment guide above (steps 1-11) works on both rw and ro — this just locks it down.
 
-<details>
-<summary>Click to expand steps</summary>
+**Prerequisite:** Complete steps 1-12 from the deployment guide first (travel-net must be running).
 
-**1. Open your filesystem configuration file**
 ```bash
+# === LOCK ROOTFS READ-ONLY ===
+
+# 1. Edit /etc/fstab — change the rootfs line from:
+#      UUID=... / ext4 defaults,noatime 0 1
+#    to:
+#      UUID=... / ext4 defaults,noatime,ro 0 1
 sudo nano /etc/fstab
-```
 
-**2. Find your third line that looks like this:**
-```
-UUID=7cf9f135-82db-4514-af4e-5817cb922fec / ext4 defaults 0 1
-```
+# 2. Add these tmpfs lines at the bottom of /etc/fstab:
+#     tmpfs   /tmp                       tmpfs   defaults,noatime,nosuid,nodev,mode=1777   0   0
+#     tmpfs   /var/log                   tmpfs   defaults,noatime,nosuid,nodev,mode=0755   0   0
+#     tmpfs   /var/tmp                   tmpfs   defaults,noatime,nosuid,nodev,mode=1777   0   0
+#     tmpfs   /var/lib/NetworkManager    tmpfs   defaults,noatime,nosuid,nodev            0   0
 
-**3. Change "defaults" to "defaults,noatime,ro"**
-```
-UUID=7cf9f135-82db-4514-af4e-5817cb922fec / ext4 defaults,noatime,ro 0 1
-```
+# 3. Update NM's systemd override to add read-write paths for ro rootfs:
+sudo sed -i '/ReadWritePaths=\/etc\/NetworkManager\/system-connections/a ReadWritePaths=/var/lib/NetworkManager' \
+  /etc/systemd/system/NetworkManager.service.d/override.conf
 
-**4. Paste these lines at the absolute bottom to force system writes into RAM:**
-```
-tmpfs   /tmp        tmpfs   defaults,noatime,nosuid,nodev,mode=1777   0   0
-tmpfs   /var/log    tmpfs   defaults,noatime,nosuid,nodev,mode=0755   0   0
-tmpfs   /var/tmp    tmpfs   defaults,noatime,nosuid,nodev,mode=1777   0   0
-```
+# 4. Symlink /etc/resolv.conf to systemd-resolved stub (NM can't write it on ro)
+sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
 
-**5. Save and exit** (Ctrl+O, Enter, Ctrl+X)
-
-**6. Reboot the board to lock it down safely**
-```bash
+# 5. Reboot to lock
 sudo reboot
+```
+
+After reboot, verify:
+```bash
+cat /proc/mounts | grep ' / '          # Should show ro,noatime
+cat /proc/mounts | grep tmpfs          # Should show tmpfs mounts
+journalctl -u travel-net --no-pager -n 10  # AP should start
+host google.com 192.168.4.1            # DNS should resolve
 ```
 
 ### Making changes later
 
 ```bash
-# 1. UNLOCK the system to make configuration edits or install packages
-sudo mount -t ext4 -o remount,rw /
-
-# [ Make your travel router changes, update Wi-Fi, or tweak settings here ]
-
-# 2. LOCK the system back down immediately without needing a reboot
-sudo mount -o remount,ro /
+sudo mount -o remount,rw /     # unlock (may fail if services hold files open)
+# ... make edits or install packages ...
+sudo mount -o remount,ro /     # re-lock (may fail if services hold files open)
+sudo reboot                    # guaranteed clean ro boot
 ```
-
-</details>
 
 ## License
 
