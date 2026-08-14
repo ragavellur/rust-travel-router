@@ -7,7 +7,7 @@ Standards-Version: 4.6.2
 
 Package: travel-net
 Architecture: any
-Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, ${shlibs:Depends}, ${misc:Depends}
+Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools, ${shlibs:Depends}, ${misc:Depends}
 Recommends: avahi-daemon
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
