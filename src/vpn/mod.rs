@@ -690,7 +690,7 @@ pub fn import_conf(text: &str) -> Result<crate::config::VpnConfig, String> {
     Ok(vpn)
 }
 
-pub async fn apply(cfg: &Config) -> Result<(), String> {
+pub fn apply(cfg: &Config) -> Result<(), String> {
     nft_teardown();
     match cfg.vpn.backend.as_str() {
         "wireguard" if cfg.vpn.role == "travel" => wg_client_apply(cfg),

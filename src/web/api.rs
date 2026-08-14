@@ -1,5 +1,7 @@
-use crate::config::{self, Config};
+use crate::config::{self, Config, VpnConfig, WgPeer};
+use crate::firewall;
 use crate::system::{clients, interfaces, reboot, uptime};
+use crate::vpn;
 use crate::web::auth;
 use crate::web::AppState;
 use crate::wifi::{self, connect, scan, status};
@@ -36,10 +38,12 @@ struct StatusResponse {
     ap_ip: String,
     ap_channel: u8,
     uplink_ip: Option<String>,
+    uplink_interface: String,
     client_count: usize,
     uptime_secs: u64,
     hostname: String,
     interfaces: Vec<interfaces::InterfaceInfo>,
+    vpn: vpn::VpnStatus,
 }
 
 #[derive(Serialize)]
@@ -69,6 +73,11 @@ struct ClientsResponse {
 #[derive(Serialize)]
 struct LogsResponse {
     logs: String,
+}
+
+#[derive(Deserialize)]
+struct IpRequest {
+    ip: String,
 }
 
 #[derive(Deserialize)]
@@ -103,6 +112,30 @@ struct ConfigUpdate {
     sta_ssid: Option<String>,
     sta_password: Option<String>,
     web_password: Option<String>,
+    power_mode: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct VpnUpdate {
+    vpn: VpnConfig,
+}
+
+#[derive(Deserialize)]
+struct ImportRequest {
+    conf: String,
+}
+
+#[derive(Deserialize)]
+struct GenKeysRequest {
+    scope: String,
+}
+
+#[derive(Deserialize)]
+struct PeerRequest {
+    action: String,
+    name: Option<String>,
+    public_key: Option<String>,
+    tunnel_ip: Option<String>,
 }
 
 pub fn routes() -> Router<AppState> {
@@ -117,7 +150,14 @@ pub fn routes() -> Router<AppState> {
         .route("/api/login", post(api_login))
         .route("/api/logout", post(api_logout))
         .route("/api/logs", get(api_logs))
+        .route("/api/clients/disconnect", post(api_disconnect))
+        .route("/api/clients/unblock", post(api_unblock))
         .route("/api/reset", post(api_reset))
+        .route("/api/vpn", get(api_vpn_get).post(api_vpn_post))
+        .route("/api/vpn/import", post(api_vpn_import))
+        .route("/api/vpn/genkeys", post(api_vpn_genkeys))
+        .route("/api/vpn/peers", post(api_vpn_peers))
+        .route("/api/vpn/install", post(api_vpn_install))
 }
 
 async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderMap) -> Json<StatusResponse> {
@@ -132,6 +172,8 @@ async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderM
     let upt = uptime::get_uptime();
     let ifaces = interfaces::get_all_interfaces();
 
+    let uplink_iface = firewall::detect_uplink(&cfg);
+
     Json(StatusResponse {
         wifi_connected: link.connected,
         connected_ssid: link.ssid,
@@ -140,10 +182,12 @@ async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderM
         ap_ip: cfg.ap_ip.clone(),
         ap_channel: cfg.ap_channel,
         uplink_ip,
+        uplink_interface: uplink_iface,
         client_count: clients::client_count(),
         uptime_secs: upt.as_secs(),
         hostname: cfg.hostname.clone(),
         interfaces: ifaces,
+        vpn: vpn::status(&cfg),
     })
 }
 
@@ -214,7 +258,7 @@ async fn api_config_post(
     if let Some(v) = update.ap_ssid { cfg.ap_ssid = v; }
     if let Some(v) = update.ap_password { cfg.ap_password = v; }
     if let Some(v) = update.ap_ip { cfg.ap_ip = v; }
-    if let Some(v) = update.ap_netmask { cfg.ap_netmask = v; }
+    if let Some(v) = update.ap_netmask { if !v.is_empty() { cfg.ap_netmask = v; } }
     if let Some(v) = update.ap_channel { cfg.ap_channel = v; }
     if let Some(v) = update.ap_band { cfg.ap_band = v; }
     if let Some(v) = update.dhcp_start { cfg.dhcp_start = v; }
@@ -223,6 +267,7 @@ async fn api_config_post(
     if let Some(v) = update.hostname { cfg.hostname = v; }
     if let Some(v) = update.sta_ssid { cfg.sta_ssid = v; }
     if let Some(v) = update.sta_password { cfg.sta_password = v; }
+    if let Some(v) = update.power_mode { cfg.power_mode = v; }
     if let Some(v) = update.web_password {
         cfg.web_password = v.clone();
         if v.is_empty() {
@@ -343,6 +388,34 @@ async fn api_logs(
     }
 }
 
+async fn api_disconnect(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<IpRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    match clients::block_client(&req.ip) {
+        Ok(_) => Ok(Json(serde_json::json!({"success": true}))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e})))),
+    }
+}
+
+async fn api_unblock(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<IpRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    match clients::unblock_client(&req.ip) {
+        Ok(_) => Ok(Json(serde_json::json!({"success": true}))),
+        Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e})))),
+    }
+}
+
 async fn api_reset(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
@@ -370,4 +443,243 @@ async fn api_reset(
     });
 
     Ok(Json(serde_json::json!({"success": true, "message": "Factory reset done. Services restarting with defaults."})))
+}
+
+fn apply_vpn_in_background(cfg: Config) {
+    tokio::task::spawn_blocking(move || {
+        if let Err(e) = vpn::apply(&cfg) {
+            tracing::error!("VPN apply failed: {e}");
+        }
+    });
+}
+
+async fn api_vpn_get(State(state): State<AppState>, headers: axum::http::HeaderMap) -> impl IntoResponse {
+    if !is_authed(&state, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Unauthorized"}))).into_response();
+    }
+    let cfg = state.config.read().await;
+    (StatusCode::OK, Json(serde_json::json!({"config": cfg.vpn.clone(), "status": vpn::status(&cfg)}))).into_response()
+}
+
+async fn api_vpn_post(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(update): Json<VpnUpdate>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    let mut cfg = state.config.write().await;
+    cfg.vpn = update.vpn;
+
+    if let Err(errors) = cfg.validate() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"success": false, "error": errors.join("; ")})),
+        ));
+    }
+    let path = std::path::Path::new("/etc/travel-net/config.json");
+    if let Err(e) = config::save(path, &cfg) {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"success": false, "error": e.to_string()})),
+        ));
+    }
+    let new_cfg = cfg.clone();
+    drop(cfg);
+    apply_vpn_in_background(new_cfg);
+    Ok(Json(serde_json::json!({"success": true, "message": "VPN settings saved and applied."})))
+}
+
+async fn api_vpn_import(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<ImportRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    match vpn::import_conf(&req.conf) {
+        Ok(parsed) => Ok(Json(serde_json::json!({
+            "success": true,
+            "parsed": parsed,
+            "message": "Config parsed — review it below, then Save to apply."
+        }))),
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"success": false, "error": e})),
+        )),
+    }
+}
+
+async fn api_vpn_genkeys(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<GenKeysRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    let (privkey, pubkey) = vpn::gen_keypair().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"success": false, "error": e})),
+        )
+    })?;
+    let mut cfg = state.config.write().await;
+    match req.scope.as_str() {
+        "server" => {
+            cfg.vpn.wg_server_private_key = privkey.clone();
+            cfg.vpn.wg_server_public_key = pubkey.clone();
+        }
+        "client" => {
+            cfg.vpn.wg_private_key = privkey.clone();
+            cfg.vpn.wg_peer_public_key = pubkey.clone();
+        }
+        other => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"success": false, "error": format!("scope must be 'client' or 'server', got '{other}'")})),
+            ));
+        }
+    }
+    let path = std::path::Path::new("/etc/travel-net/config.json");
+    if let Err(e) = config::save(path, &cfg) {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"success": false, "error": e.to_string()})),
+        ));
+    }
+    Ok(Json(serde_json::json!({
+        "success": true,
+        "scope": req.scope,
+        "private_key": privkey,
+        "public_key": pubkey,
+    })))
+}
+
+async fn api_vpn_peers(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<PeerRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    let name = req
+        .name
+        .clone()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"success": false, "error": "A peer name is required"})),
+        ));
+    }
+    match req.action.as_str() {
+        "add" => {
+            let mut cfg = state.config.write().await;
+            if cfg.vpn.wg_peers.iter().any(|p| p.name == name) {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"success": false, "error": "A peer with that name already exists"})),
+                ));
+            }
+            let (peer, client_conf) = match (req.public_key.as_deref(), req.tunnel_ip.as_deref()) {
+                (Some(pk), Some(tip)) => {
+                    let peer = WgPeer {
+                        name: name.clone(),
+                        public_key: pk.trim().to_string(),
+                        tunnel_ip: tip.trim().to_string(),
+                    };
+                    (peer, None)
+                }
+                _ => {
+                    let (peer, conf) = vpn::gen_peer(&cfg, &name).map_err(|e| {
+                        (
+                            StatusCode::BAD_REQUEST,
+                            Json(serde_json::json!({"success": false, "error": e})),
+                        )
+                    })?;
+                    (peer, Some(conf))
+                }
+            };
+            cfg.vpn.wg_peers.push(peer.clone());
+            if let Err(errors) = cfg.validate() {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"success": false, "error": errors.join("; ")})),
+                ));
+            }
+            let path = std::path::Path::new("/etc/travel-net/config.json");
+            if let Err(e) = config::save(path, &cfg) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"success": false, "error": e.to_string()})),
+                ));
+            }
+            let new_cfg = cfg.clone();
+            drop(cfg);
+            apply_vpn_in_background(new_cfg);
+            Ok(Json(serde_json::json!({
+                "success": true,
+                "message": "Travel device added.",
+                "peer": peer,
+                "client_conf": client_conf,
+            })))
+        }
+        "remove" => {
+            let mut cfg = state.config.write().await;
+            let before = cfg.vpn.wg_peers.len();
+            cfg.vpn.wg_peers.retain(|p| p.name != name);
+            if cfg.vpn.wg_peers.len() == before {
+                return Err((
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"success": false, "error": "No peer with that name"})),
+                ));
+            }
+            let path = std::path::Path::new("/etc/travel-net/config.json");
+            if let Err(e) = config::save(path, &cfg) {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"success": false, "error": e.to_string()})),
+                ));
+            }
+            let peers = cfg.vpn.wg_peers.clone();
+            let new_cfg = cfg.clone();
+            drop(cfg);
+            apply_vpn_in_background(new_cfg);
+            Ok(Json(serde_json::json!({"success": true, "message": "Peer removed.", "peers": peers})))
+        }
+        other => Err((
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"success": false, "error": format!("action must be 'add' or 'remove', got '{other}'")})),
+        )),
+    }
+}
+
+async fn api_vpn_install(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    let logs = tokio::task::spawn_blocking(vpn::install)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"success": false, "error": e.to_string()})),
+            )
+        })?;
+    match logs {
+        Ok(lines) => Ok(Json(serde_json::json!({"success": true, "logs": lines}))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"success": false, "error": e})),
+        )),
+    }
 }
