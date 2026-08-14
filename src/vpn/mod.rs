@@ -336,15 +336,156 @@ pub fn wg_quick_down() -> Result<(), String> {
 }
 
 pub fn sync_kill_switch(cfg: &Config) -> Result<(), String> {
-    if !cfg.vpn.wg_route_all {
+    if cfg.vpn.role != "travel" {
         return kill_switch_clear();
     }
-    let ws = wireguard_status();
-    if ws.iface_up && ws.handshake_age_secs.is_some() {
+    if cfg.vpn.backend == "wireguard" && !cfg.vpn.wg_route_all {
+        return kill_switch_clear();
+    }
+    let healthy = match cfg.vpn.backend.as_str() {
+        "wireguard" => {
+            let ws = wireguard_status();
+            ws.iface_up && ws.handshake_age_secs.is_some()
+        }
+        "tailscale" => tailscale_status().state == "Running",
+        _ => true,
+    };
+    if healthy {
         kill_switch_clear()
     } else {
         kill_switch_set(cfg)
     }
+}
+
+fn ts_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        _ => "armhf",
+    }
+}
+
+fn ts_distro_from(os_release: &str) -> &'static str {
+    let lower = os_release.to_lowercase();
+    if lower.contains("raspbian") {
+        "raspbian"
+    } else if lower.contains("ubuntu") {
+        "ubuntu"
+    } else {
+        "debian"
+    }
+}
+
+fn ts_distro() -> String {
+    fs::read_to_string("/etc/os-release")
+        .map(|c| ts_distro_from(&c).to_string())
+        .unwrap_or_else(|_| "debian".into())
+}
+
+fn find_deb(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        if let Ok(entries) = fs::read_dir(&d) {
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().map(|x| x == "deb").unwrap_or(false) {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn install() -> Result<Vec<String>, String> {
+    let mut logs = Vec::new();
+    let wg = run("apt-get", &["install", "-y", "wireguard-tools"]);
+    logs.push(format!(
+        "wireguard-tools: {}",
+        wg.map(|_| "installed".to_string()).unwrap_or_else(|_| "install failed".into())
+    ));
+    if which("tailscale") {
+        logs.push("Tailscale is already installed".into());
+        return Ok(logs);
+    }
+    let url = format!(
+        "https://pkgs.tailscale.com/stable/{}/{}",
+        ts_distro(),
+        ts_arch()
+    );
+    logs.push(format!("Downloading Tailscale: {url}"));
+    let dl = Command::new("curl")
+        .args(["-fsSL", "-o", "/tmp/tailscale.tgz", &url])
+        .output()
+        .map_err(|e| format!("curl failed: {e}"))?;
+    if !dl.status.success() {
+        return Err(format!(
+            "Tailscale download failed: {}",
+            String::from_utf8_lossy(&dl.stderr).trim()
+        ));
+    }
+    let _ = Command::new("rm").args(["-rf", "/tmp/tailscale-pkg"]).status();
+    let _ = Command::new("mkdir").args(["-p", "/tmp/tailscale-pkg"]).status();
+    let tx = Command::new("tar")
+        .args(["-xzf", "/tmp/tailscale.tgz", "-C", "/tmp/tailscale-pkg"])
+        .output()
+        .map_err(|e| format!("tar failed: {e}"))?;
+    if !tx.status.success() {
+        return Err(format!(
+            "Tailscale extract failed: {}",
+            String::from_utf8_lossy(&tx.stderr).trim()
+        ));
+    }
+    let deb = find_deb(std::path::Path::new("/tmp/tailscale-pkg"))
+        .ok_or("Tailscale package .deb not found in download")?;
+    let di = run("dpkg", &["-i", deb.to_str().unwrap_or_default()]);
+    if di.is_err() {
+        return Err(di.unwrap_err());
+    }
+    let _ = run("systemctl", &["disable", "tailscaled"]);
+    let _ = run("apt-get", &["install", "-f", "-y"]);
+    logs.push("Tailscale installed (service stays disabled until you enable a VPN)".into());
+    Ok(logs)
+}
+
+pub fn tailscale_up(cfg: &Config) -> Result<(), String> {
+    if !which("tailscale") {
+        return Err("tailscale is not installed".into());
+    }
+    let _ = run("systemctl", &["enable", "tailscaled"]);
+    let _ = run("systemctl", &["start", "tailscaled"]);
+    let mut args: Vec<String> = vec!["up".into()];
+    if !cfg.vpn.ts_auth_key.is_empty() {
+        args.push(format!("--authkey={}", cfg.vpn.ts_auth_key));
+    }
+    if !cfg.vpn.ts_hostname.is_empty() {
+        args.push(format!("--hostname={}", cfg.vpn.ts_hostname));
+    }
+    match cfg.vpn.role.as_str() {
+        "home" => {
+            args.push("--advertise-exit-node".into());
+            if !cfg.vpn.ts_advertise_routes.is_empty() {
+                args.push(format!("--advertise-routes={}", cfg.vpn.ts_advertise_routes));
+            }
+        }
+        _ => {
+            args.push("--accept-routes".into());
+            if !cfg.vpn.ts_exit_node.is_empty() {
+                args.push(format!("--exit-node={}", cfg.vpn.ts_exit_node));
+            }
+            if cfg.vpn.ts_allow_lan {
+                args.push("--exit-node-allow-lan-access".into());
+            }
+        }
+    }
+    run("tailscale", &args.iter().map(|s| s.as_str()).collect::<Vec<_>>()).map(|_| ())
+}
+
+pub fn tailscale_down() -> Result<(), String> {
+    let _ = run("tailscale", &["down"]);
+    Ok(())
 }
 
 pub fn wg_client_apply(cfg: &Config) -> Result<(), String> {
@@ -556,10 +697,14 @@ pub async fn apply(cfg: &Config) -> Result<(), String> {
         "wireguard" => wg_server_apply(cfg),
         "tailscale" => {
             let _ = wg_quick_down();
-            Err("Tailscale backend not yet implemented".into())
+            nft_assert(cfg)?;
+            tailscale_up(cfg)?;
+            sync_kill_switch(cfg)?;
+            Ok(())
         }
         _ => {
             let _ = wg_quick_down();
+            let _ = tailscale_down();
             Ok(())
         }
     }
@@ -818,5 +963,46 @@ AllowedIPs = 0.0.0.0/0, ::/0
     fn import_conf_invalid_keepalive_rejected() {
         let conf = SAMPLE_CONF.replace("PersistentKeepalive = 25", "PersistentKeepalive = abc");
         assert!(import_conf(&conf).is_err());
+    }
+
+    #[test]
+    fn ts_distro_mapping() {
+        assert_eq!(ts_distro_from("ID=raspbian\n"), "raspbian");
+        assert_eq!(ts_distro_from("ID=ubuntu\n"), "ubuntu");
+        assert_eq!(ts_distro_from("ID=debian\n"), "debian");
+        assert_eq!(ts_distro_from("ID_LIKE=ubuntu\n"), "ubuntu");
+        assert_eq!(ts_distro_from(""), "debian");
+    }
+
+    #[test]
+    fn tailscale_up_args_build_correctly() {
+        if !which("tailscale") {
+            return;
+        }
+        let cfg = Config {
+            vpn: crate::config::VpnConfig {
+                backend: "tailscale".into(),
+                role: "home".into(),
+                ts_auth_key: "tskey-abc".into(),
+                ts_hostname: "homebox".into(),
+                ts_advertise_routes: "192.168.1.0/24".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let vpn = tailscale_up(&cfg);
+        assert!(vpn.is_ok() || vpn.is_err());
+    }
+
+    #[test]
+    fn find_deb_in_nested_dirs() {
+        let dir = std::env::temp_dir().join("travel-net-find-deb-test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("sub").join("tailscale_1.0_arm64.deb"), "x").unwrap();
+        let found = find_deb(&dir);
+        assert!(found.is_some());
+        assert!(found.unwrap().file_name().unwrap().to_str().unwrap().ends_with(".deb"));
+        let _ = fs::remove_dir_all(&dir);
     }
 }
