@@ -1,6 +1,8 @@
 use crate::config::Config;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 
 pub const VPN_NFT_FILE: &str = "/etc/travel-net/travel-vpn.nft";
@@ -217,6 +219,11 @@ table inet travel-vpn {{
         udp dport {wg_port} accept
     }}
 
+    chain clamp {{
+        type filter hook forward priority filter + 2; policy accept;
+        oifname "wg0" tcp flags syn tcp option maxseg size set 1380
+    }}
+
     chain killswitch {{
         type filter hook forward priority filter + 1; policy accept;
     }}
@@ -260,6 +267,110 @@ pub fn kill_switch_clear() -> Result<(), String> {
     run("nft", &["flush", "chain", "inet", "travel-vpn", "killswitch"]).map(|_| ())
 }
 
+pub fn gen_keypair() -> Result<(String, String), String> {
+    let privkey = run("wg", &["genkey"])?;
+    let mut child = Command::new("wg")
+        .arg("pubkey")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("wg pubkey spawn: {e}"))?;
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(privkey.as_bytes())
+        .map_err(|e| format!("wg pubkey stdin: {e}"))?;
+    let out = child
+        .wait_with_output()
+        .map_err(|e| format!("wg pubkey: {e}"))?;
+    let pubkey = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok((privkey.trim().to_string(), pubkey))
+}
+
+fn wg_client_conf(cfg: &Config) -> String {
+    let allowed = if cfg.vpn.wg_route_all {
+        "0.0.0.0/0".to_string()
+    } else {
+        wg_server_subnet(cfg)
+    };
+    let mut conf = String::new();
+    conf.push_str("[Interface]\n");
+    conf.push_str(&format!("PrivateKey = {}\n", cfg.vpn.wg_private_key));
+    conf.push_str(&format!("Address = {}\n", cfg.vpn.wg_address));
+    if !cfg.vpn.wg_dns.is_empty() {
+        conf.push_str(&format!("DNS = {}\n", cfg.vpn.wg_dns));
+    }
+    conf.push_str("ListenPort = 51820\n\n");
+    conf.push_str("[Peer]\n");
+    conf.push_str(&format!("PublicKey = {}\n", cfg.vpn.wg_peer_public_key));
+    if !cfg.vpn.wg_preshared_key.is_empty() {
+        conf.push_str(&format!("PresharedKey = {}\n", cfg.vpn.wg_preshared_key));
+    }
+    conf.push_str(&format!("Endpoint = {}\n", cfg.vpn.wg_endpoint));
+    conf.push_str(&format!("PersistentKeepalive = {}\n", cfg.vpn.wg_keepalive));
+    conf.push_str(&format!("AllowedIPs = {allowed}\n"));
+    conf
+}
+
+pub fn write_wg_client_conf(cfg: &Config) -> Result<(), String> {
+    let dir = std::path::PathBuf::from("/etc/wireguard");
+    fs::create_dir_all(&dir).map_err(|e| format!("Create /etc/wireguard: {e}"))?;
+    let path = dir.join("wg0.conf");
+    fs::write(&path, wg_client_conf(cfg)).map_err(|e| format!("Write wg0.conf: {e}"))?;
+    let _ = fs::set_permissions(&path, PermissionsExt::from_mode(0o600));
+    Ok(())
+}
+
+pub fn wg_quick_up() -> Result<(), String> {
+    run("wg-quick", &["up", "wg0"]).map(|_| ())
+}
+
+pub fn wg_quick_down() -> Result<(), String> {
+    let _ = run("wg-quick", &["down", "wg0"]);
+    Ok(())
+}
+
+pub fn sync_kill_switch(cfg: &Config) -> Result<(), String> {
+    if !cfg.vpn.wg_route_all {
+        return kill_switch_clear();
+    }
+    let ws = wireguard_status();
+    if ws.iface_up && ws.handshake_age_secs.is_some() {
+        kill_switch_clear()
+    } else {
+        kill_switch_set(cfg)
+    }
+}
+
+pub fn wg_client_apply(cfg: &Config) -> Result<(), String> {
+    write_wg_client_conf(cfg)?;
+    let _ = wg_quick_down();
+    nft_assert(cfg)?;
+    wg_quick_up()?;
+    sync_kill_switch(cfg)?;
+    Ok(())
+}
+
+pub async fn apply(cfg: &Config) -> Result<(), String> {
+    nft_teardown();
+    match cfg.vpn.backend.as_str() {
+        "wireguard" if cfg.vpn.role == "travel" => wg_client_apply(cfg),
+        "wireguard" => {
+            let _ = wg_quick_down();
+            Err("WireGuard home server role not yet implemented".into())
+        }
+        "tailscale" => {
+            let _ = wg_quick_down();
+            Err("Tailscale backend not yet implemented".into())
+        }
+        _ => {
+            let _ = wg_quick_down();
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,5 +412,62 @@ mod tests {
         assert_eq!(tunnel_iface(&cfg), Some("tailscale0"));
         cfg.vpn.backend = "none".into();
         assert_eq!(tunnel_iface(&cfg), None);
+    }
+
+    #[test]
+    fn client_conf_route_all() {
+        let mut cfg = test_cfg();
+        cfg.vpn.role = "travel".into();
+        cfg.vpn.wg_private_key = "privkey".into();
+        cfg.vpn.wg_peer_public_key = "pubkey".into();
+        cfg.vpn.wg_endpoint = "example.com:51820".into();
+        cfg.vpn.wg_route_all = true;
+        let conf = wg_client_conf(&cfg);
+        assert!(conf.contains("[Interface]"));
+        assert!(conf.contains("PrivateKey = privkey"));
+        assert!(conf.contains("Address = 10.0.0.2/24"));
+        assert!(conf.contains("ListenPort = 51820"));
+        assert!(conf.contains("PublicKey = pubkey"));
+        assert!(conf.contains("Endpoint = example.com:51820"));
+        assert!(conf.contains("PersistentKeepalive = 25"));
+        assert!(conf.contains("AllowedIPs = 0.0.0.0/0"));
+    }
+
+    #[test]
+    fn client_conf_split_tunnel() {
+        let mut cfg = test_cfg();
+        cfg.vpn.wg_route_all = false;
+        cfg.vpn.wg_private_key = "privkey".into();
+        cfg.vpn.wg_peer_public_key = "pubkey".into();
+        cfg.vpn.wg_endpoint = "example.com:51820".into();
+        let conf = wg_client_conf(&cfg);
+        assert!(conf.contains("AllowedIPs = 10.0.0.0/24"));
+        assert!(!conf.contains("0.0.0.0/0"));
+    }
+
+    #[test]
+    fn client_conf_includes_dns_and_psk() {
+        let mut cfg = test_cfg();
+        cfg.vpn.wg_dns = "10.0.0.1".into();
+        cfg.vpn.wg_preshared_key = "psk".into();
+        let conf = wg_client_conf(&cfg);
+        assert!(conf.contains("DNS = 10.0.0.1"));
+        assert!(conf.contains("PresharedKey = psk"));
+    }
+
+    #[test]
+    fn generate_table_has_mss_clamp() {
+        let t = generate_table(&test_cfg());
+        assert!(t.contains("tcp option maxseg size set 1380"));
+    }
+
+    #[test]
+    fn keypair_generation() {
+        if !which("wg") {
+            return;
+        }
+        let (privkey, pubkey) = gen_keypair().unwrap();
+        assert!(privkey.starts_with("O")) /* openssh base64 */ ;
+        assert!(!pubkey.is_empty());
     }
 }
