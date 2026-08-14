@@ -15,32 +15,22 @@ case "$1" in
         # user enables a VPN on the web page. travel-net starts/enables
         # tailscaled itself when a Tailscale backend is applied.
         if ! command -v tailscale >/dev/null 2>&1; then
-            TSARCH=""
-            case "$(dpkg --print-architecture)" in
-                amd64) TSARCH=amd64 ;;
-                arm64) TSARCH=arm64 ;;
-                armhf) TSARCH=armhf ;;
-            esac
-            if [ -n "$TSARCH" ]; then
-                TS_DISTRO=debian
+            if command -v curl >/dev/null 2>&1; then
+                TS_OS=debian
                 DISTRO=$(grep -E '^ID=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')
                 case "$DISTRO" in
-                    raspbian) TS_DISTRO=raspbian ;;
-                    ubuntu) TS_DISTRO=ubuntu ;;
+                    raspbian) TS_OS=raspbian ;;
+                    ubuntu) TS_OS=ubuntu ;;
                 esac
-                if command -v curl >/dev/null 2>&1; then
-                    echo "travel-net: installing Tailscale ($TS_DISTRO/$TSARCH)..."
-                    curl -fsSL -o /tmp/tailscale.tgz "https://pkgs.tailscale.com/stable/$TS_DISTRO/$TSARCH.tgz" || true
-                    if [ -s /tmp/tailscale.tgz ]; then
-                        rm -rf /tmp/tailscale-pkg && mkdir -p /tmp/tailscale-pkg
-                        tar -xzf /tmp/tailscale.tgz -C /tmp/tailscale-pkg || true
-                        DEB=$(find /tmp/tailscale-pkg -name '*.deb' 2>/dev/null | head -n1)
-                        if [ -n "$DEB" ]; then
-                            dpkg -i "$DEB" || apt-get install -f -y || true
-                        fi
-                        rm -f /tmp/tailscale.tgz
-                    fi
-                fi
+                TS_VER=$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')
+                [ -n "$TS_VER" ] || TS_VER=stable
+                echo "travel-net: installing Tailscale ($TS_OS/$TS_VER) via apt repo..."
+                mkdir -p --mode=0755 /usr/share/keyrings
+                curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg || true
+                curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list || true
+                chmod 0644 /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
+                apt-get update || true
+                apt-get install -y tailscale || true
             fi
         fi
         systemctl disable tailscaled 2>/dev/null || true

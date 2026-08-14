@@ -367,15 +367,7 @@ pub fn sync_kill_switch(cfg: &Config) -> Result<(), String> {
     }
 }
 
-fn ts_arch() -> &'static str {
-    match std::env::consts::ARCH {
-        "x86_64" => "amd64",
-        "aarch64" => "arm64",
-        _ => "armhf",
-    }
-}
-
-fn ts_distro_from(os_release: &str) -> &'static str {
+fn ts_os_from(os_release: &str) -> &'static str {
     let lower = os_release.to_lowercase();
     if lower.contains("raspbian") {
         "raspbian"
@@ -386,27 +378,28 @@ fn ts_distro_from(os_release: &str) -> &'static str {
     }
 }
 
-fn ts_distro() -> String {
+fn ts_os() -> String {
     fs::read_to_string("/etc/os-release")
-        .map(|c| ts_distro_from(&c).to_string())
+        .map(|c| ts_os_from(&c).to_string())
         .unwrap_or_else(|_| "debian".into())
 }
 
-fn find_deb(dir: &std::path::Path) -> Option<std::path::PathBuf> {
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(d) = stack.pop() {
-        if let Ok(entries) = fs::read_dir(&d) {
-            for e in entries.flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    stack.push(p);
-                } else if p.extension().map(|x| x == "deb").unwrap_or(false) {
-                    return Some(p);
-                }
-            }
-        }
-    }
-    None
+fn ts_codename_from(os_release: &str) -> String {
+    os_release
+        .lines()
+        .find_map(|l| {
+            let mut it = l.splitn(2, '=');
+            let (k, v) = (it.next()?, it.next()?);
+            (k == "VERSION_CODENAME").then(|| v.trim().trim_matches('"').to_string())
+        })
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "stable".into())
+}
+
+fn ts_codename() -> String {
+    fs::read_to_string("/etc/os-release")
+        .map(|c| ts_codename_from(&c))
+        .unwrap_or_else(|_| "stable".into())
 }
 
 pub fn install() -> Result<Vec<String>, String> {
@@ -420,42 +413,26 @@ pub fn install() -> Result<Vec<String>, String> {
         logs.push("Tailscale is already installed".into());
         return Ok(logs);
     }
-    let url = format!(
-        "https://pkgs.tailscale.com/stable/{}/{}",
-        ts_distro(),
-        ts_arch()
-    );
-    logs.push(format!("Downloading Tailscale: {url}"));
-    let dl = Command::new("curl")
-        .args(["-fsSL", "-o", "/tmp/tailscale.tgz", &url])
-        .output()
-        .map_err(|e| format!("curl failed: {e}"))?;
-    if !dl.status.success() {
-        return Err(format!(
-            "Tailscale download failed: {}",
-            String::from_utf8_lossy(&dl.stderr).trim()
-        ));
+    let os = ts_os();
+    let codename = ts_codename();
+    logs.push(format!("Installing Tailscale via apt repo (pkgs.tailscale.com/stable/{os}/{codename})"));
+    let _ = Command::new("mkdir").args(["-p", "--mode=0755", "/usr/share/keyrings"]).status();
+    let _ = run("sh", &["-c", &format!(
+        "curl -fsSL https://pkgs.tailscale.com/stable/{os}/{codename}.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg"
+    )]);
+    let _ = run("sh", &["-c", &format!(
+        "curl -fsSL https://pkgs.tailscale.com/stable/{os}/{codename}.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list"
+    )]);
+    let _ = run("chmod", &["0644", "/etc/apt/sources.list.d/tailscale.list"]);
+    let up = run("apt-get", &["update"]);
+    if up.is_err() {
+        return Err(format!("apt-get update failed: {}", up.unwrap_err()));
     }
-    let _ = Command::new("rm").args(["-rf", "/tmp/tailscale-pkg"]).status();
-    let _ = Command::new("mkdir").args(["-p", "/tmp/tailscale-pkg"]).status();
-    let tx = Command::new("tar")
-        .args(["-xzf", "/tmp/tailscale.tgz", "-C", "/tmp/tailscale-pkg"])
-        .output()
-        .map_err(|e| format!("tar failed: {e}"))?;
-    if !tx.status.success() {
-        return Err(format!(
-            "Tailscale extract failed: {}",
-            String::from_utf8_lossy(&tx.stderr).trim()
-        ));
-    }
-    let deb = find_deb(std::path::Path::new("/tmp/tailscale-pkg"))
-        .ok_or("Tailscale package .deb not found in download")?;
-    let di = run("dpkg", &["-i", deb.to_str().unwrap_or_default()]);
-    if di.is_err() {
-        return Err(di.unwrap_err());
+    let inst = run("apt-get", &["install", "-y", "tailscale"]);
+    if inst.is_err() {
+        return Err(format!("tailscale install failed: {}", inst.unwrap_err()));
     }
     let _ = run("systemctl", &["disable", "tailscaled"]);
-    let _ = run("apt-get", &["install", "-f", "-y"]);
     logs.push("Tailscale installed (service stays disabled until you enable a VPN)".into());
     Ok(logs)
 }
@@ -977,11 +954,18 @@ AllowedIPs = 0.0.0.0/0, ::/0
 
     #[test]
     fn ts_distro_mapping() {
-        assert_eq!(ts_distro_from("ID=raspbian\n"), "raspbian");
-        assert_eq!(ts_distro_from("ID=ubuntu\n"), "ubuntu");
-        assert_eq!(ts_distro_from("ID=debian\n"), "debian");
-        assert_eq!(ts_distro_from("ID_LIKE=ubuntu\n"), "ubuntu");
-        assert_eq!(ts_distro_from(""), "debian");
+        assert_eq!(ts_os_from("ID=raspbian\n"), "raspbian");
+        assert_eq!(ts_os_from("ID=ubuntu\n"), "ubuntu");
+        assert_eq!(ts_os_from("ID=debian\n"), "debian");
+        assert_eq!(ts_os_from("ID_LIKE=ubuntu\n"), "ubuntu");
+        assert_eq!(ts_os_from(""), "debian");
+    }
+
+    #[test]
+    fn ts_codename_parsing() {
+        assert_eq!(ts_codename_from("VERSION_CODENAME=trixie\n"), "trixie");
+        assert_eq!(ts_codename_from("VERSION_CODENAME=\"jammy\"\n"), "jammy");
+        assert_eq!(ts_codename_from("ID=debian\n"), "stable");
     }
 
     #[test]
@@ -1002,17 +986,5 @@ AllowedIPs = 0.0.0.0/0, ::/0
         };
         let vpn = tailscale_up(&cfg);
         assert!(vpn.is_ok() || vpn.is_err());
-    }
-
-    #[test]
-    fn find_deb_in_nested_dirs() {
-        let dir = std::env::temp_dir().join("travel-net-find-deb-test");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(dir.join("sub")).unwrap();
-        fs::write(dir.join("sub").join("tailscale_1.0_arm64.deb"), "x").unwrap();
-        let found = find_deb(&dir);
-        assert!(found.is_some());
-        assert!(found.unwrap().file_name().unwrap().to_str().unwrap().ends_with(".deb"));
-        let _ = fs::remove_dir_all(&dir);
     }
 }
