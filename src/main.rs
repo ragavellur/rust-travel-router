@@ -64,6 +64,16 @@ async fn main() {
         let _ = firewall::apply_ruleset(&cfg).await;
     }
 
+    // Start the saved VPN (Tailscale / WireGuard). Must come after the
+    // firewall ruleset so the dedicated travel-vpn nft table survives the
+    // ruleset flush. Re-running at boot also re-auths Tailscale when its
+    // state was wiped (e.g. read-only rootfs with /var/lib/tailscale on tmpfs).
+    if let Err(e) = vpn::apply(&cfg) {
+        tracing::error!("VPN apply failed (backend={}): {e}", cfg.vpn.backend);
+    } else {
+        tracing::info!("VPN applied (backend={})", cfg.vpn.backend);
+    }
+
     let app = web::build_router(cfg.clone());
     let listener = tokio::net::TcpListener::bind("0.0.0.0:80")
         .await

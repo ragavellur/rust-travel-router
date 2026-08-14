@@ -101,7 +101,7 @@
         "T5",
         "T7"
       ],
-      "status": "inprogress"
+      "status": "completed"
     },
     {
       "id": "T11",
@@ -110,7 +110,7 @@
       "depends_on": [
         "T10"
       ],
-      "status": "todo"
+      "status": "completed"
     },
     {
       "id": "T12",
@@ -119,7 +119,7 @@
       "depends_on": [
         "T1"
       ],
-      "status": "todo"
+      "status": "inprogress"
     },
     {
       "id": "T13",

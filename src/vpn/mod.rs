@@ -241,7 +241,17 @@ pub fn nft_assert(cfg: &Config) -> Result<(), String> {
     let _ = Command::new("sysctl")
         .args(["-w", "net.ipv4.ip_forward=1"])
         .output();
+    let _ = run("nft", &["delete", "table", "inet", "travel-vpn"]);
     run("nft", &["-f", VPN_NFT_FILE]).map(|_| ())
+}
+
+/// Re-assert the travel-vpn nft table after something flushed the ruleset
+/// (e.g. `firewall::apply_ruleset`), then sync the kill switch to the live
+/// tunnel state so AP clients are never left with a stale/broken policy.
+pub fn reassert_rules(cfg: &Config) -> Result<(), String> {
+    nft_assert(cfg)?;
+    sync_kill_switch(cfg)?;
+    Ok(())
 }
 
 pub fn nft_teardown() {
