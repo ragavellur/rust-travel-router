@@ -2,6 +2,20 @@
 
 **Single-binary travel NAT router** — turn any Linux SBC with WiFi into a portable NAT router with a web UI. Inspired by the [ESP32 NAT Router](https://github.com/martin-ger/esp32_nat_router).
 
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Hardware Requirements](#hardware-requirements)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [VPN (WireGuard & Tailscale)](#vpn-wireguard--tailscale)
+- [Usage](#usage)
+- [Building from Source](#building-from-source)
+- [Development](#development)
+- [Optional: Read-Only Root Filesystem](#optional-read-only-root-filesystem)
+- [License](#license)
+
 ## Features
 
 - **AP + STA hybrid mode** — simultaneously act as a WiFi access point (clients connect to you) and a station (you connect to upstream WiFi)
@@ -18,27 +32,41 @@
 ## Architecture
 
 ```
-┌────────────┐    ┌──────────────┐    ┌─────────────┐
-│  Web UI    │───▶│  axum HTTP   │───▶│  Backend    │
-│ (embedded  │    │  (port 80)   │    │  Modules    │
-│  HTML/CSS) │    └──────────────┘    └──────┬──────┘
-└────────────┘                               │
-                    ┌────────────────────────┼────────────────────┐
-                    │                        │                    │
-               ┌────▼────┐           ┌───────▼───────┐    ┌──────▼──────┐
-               │  AP     │           │  STA/WiFi     │    │  System     │
-               │(hostapd)│           │(wpa_supplicant)│    │(clients,    │
-               │  DHCP   │           │  Scan/Connect │    │ interfaces, │
-               │(dnsmasq)│           │               │    │ reboot,     │
-               │ Firewall│           │               │    │ uptime,     │
-               │(nftables)│          │               │    │ logs)       │
-               └─────────┘           └───────────────┘    └─────────────┘
+    ┌────────────────────────┐      ┌────────────────────────┐
+    │         Web UI         │      │       axum HTTP        │
+    │       (embedded)       ├─────▶│       (port 80)        │
+    │      HTML / CSS        │      │                        │
+    └────────────────────────┘      └───────────┬────────────┘
+                                                │
+                                                ▼
+                                    ┌────────────────────────┐
+                                    │    Backend Modules     │
+                                    │  config · api · apply  │
+                                    │       templates        │
+                                    └───────────┬────────────┘
+                                                │
+        ┌──────────────┬──────────────┬───────┴──────┬──────────────┬──────────────┐
+        │              │              │              │              │              │
+        ▼              ▼              ▼              ▼              ▼              ▼
+    ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐
+    │    AP     │  │   STA /   │  │ Firewall  │  │    VPN    │  │  System   │  │   Other   │
+    │ ┌───────┐ │  │   WiFi    │  │(nftables) │  │ ┌───────┐ │  │ (clients) │  │ (future)  │
+    │ │hostapd│ │  │ ┌───────┐ │  │           │  │ │ Wire  │ │  │interfaces │  └───────────┘
+    │ │ or NM │ │  │ │ wpa_  │ │  │ kill      │  │ │ Guard │ │  │  reboot   │
+    │ └───────┘ │  │ │ supp  │ │  │ switch    │  │ └───────┘ │  │   logs    │
+    │   DHCP    │  │ └───────┘ │  │ NAT /     │  │   kill    │  └───────────┘
+    │ (dnsmasq) │  │  scan/con │  │ forward   │  │  switch   │
+    └───────────┘  └───────────┘  └───────────┘  └───────────┘
+
+
 ```
 
 - **Runtime**: single binary, zero runtime dependencies (not even Python)
 - **Web framework**: [axum](https://github.com/tokio-rs/axum) on [tokio](https://tokio.rs)
 - **Templates**: embedded into the binary at compile time via `include_str!`
 - **Config**: JSON file at `/etc/travel-net/config.json`
+- **AP backends**: `hostapd` + `dnsmasq` + `nftables` (brcmfmac devices: NanoPi/RPi), or NetworkManager hotspot (AIC8800 devices: Cubie A5E/A7A)
+- **VPN**: WireGuard or Tailscale with home/travel roles and a kill switch (see [VPN setup guide](docs/VPN_GUIDE.md))
 
 ## Hardware Requirements
 
