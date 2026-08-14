@@ -49,6 +49,7 @@
   <div class="button-container">
     <a href="/scan" class="nav-button"><span class="icon">📡</span> WiFi Scan</a>
     <a href="/config" class="nav-button"><span class="icon">⚙️</span> Configuration</a>
+    <a href="/vpn" class="nav-button"><span class="icon">🔐</span> VPN</a>
     <a href="/setup" class="nav-button"><span class="icon">🚀</span> Getting Started</a>
     <a href="/logs" class="nav-button"><span class="icon">📋</span> System Logs</a>
     <a href="#" class="nav-button" onclick="showActionModal('reboot'); return false;"><span class="icon">🔄</span> Reboot</a>
@@ -90,6 +91,24 @@ function formatUptime(seconds) {
   if (h > 0) parts.push(h + 'h');
   parts.push(m + 'm');
   return parts.join(' ');
+}
+
+function vpnLine(v) {
+  if (!v) return '<span class="status-value-error">--</span>';
+  const names = {none:'Off', wireguard:'WireGuard', tailscale:'Tailscale'};
+  const name = names[v.backend] || v.backend;
+  if (v.backend === 'none') return '<strong>Off</strong>';
+  let ok = false;
+  let detail = '';
+  if (v.backend === 'wireguard' && v.wireguard) {
+    ok = v.wireguard.iface_up;
+    detail = ok ? 'connected' : 'not connected';
+  } else if (v.backend === 'tailscale' && v.tailscale) {
+    ok = v.tailscale.state === 'Running';
+    detail = ok ? (v.tailscale.ip || 'connected') : 'not connected';
+  }
+  const dot = '<span class="status-dot ' + (ok ? 'connected' : 'disconnected') + '"></span>';
+  return dot + ' <a href="/vpn" style="color:#00d9ff;text-decoration:none;"><strong>' + name + '</strong></a> <span style="color:#888;">(' + detail + ')</span>';
 }
 
 function statusRow(label, value, cls) {
@@ -171,7 +190,9 @@ async function fetchStatus() {
       statusRow('AP Status', '<span class="status-dot ' + (apActive ? 'ap-active' : 'disconnected') + '"></span>' + (apActive ? 'Active' : 'Inactive')) +
       statusRow('Uplink', connectedDot(wifiOk) + (s.connected_ssid ? ' <strong>' + escapeHtml(s.connected_ssid) + '</strong>' : '')) +
       statusRow('Uplink IP', wifiOk ? (s.uplink_ip || '--') : '<span class="status-value-error">--</span>') +
-      statusRow('Connected Clients', '<strong>' + clients + '</strong>' + (clients === 1 ? ' device' : ' devices')) +
+      statusRow('Uplink Interface', '<strong>' + escapeHtml(s.uplink_interface || '--') + '</strong>') +
+      statusRow('Connected Clients', '<a href="/clients" style="color:#00d9ff;text-decoration:none;"><strong>' + clients + '</strong>' + (clients === 1 ? ' device' : ' devices') + '</a>') +
+      statusRow('VPN', vpnLine(s.vpn)) +
       statusRow('Uptime', formatUptime(s.uptime_secs)) +
       statusRow('Hostname', escapeHtml(s.hostname || 'nanopi-neo-air'));
 

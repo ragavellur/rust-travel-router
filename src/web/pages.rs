@@ -15,6 +15,8 @@ pub fn routes() -> Router<AppState> {
         .route("/config", get(config))
         .route("/setup", get(setup))
         .route("/login", get(login_page))
+        .route("/clients", get(clients_page))
+        .route("/vpn", get(vpn_page))
         .route("/logs", get(logs_page))
         .route("/favicon.png", get(favicon))
         .route("/static/style.css", get(style_css))
@@ -41,6 +43,16 @@ async fn config(State(state): State<AppState>, headers: axum::http::HeaderMap) -
 async fn setup(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
     if let Err(r) = check_auth(&state, &headers).await { return r; }
     Html(templates::SETUP_HTML.to_string()).into_response()
+}
+
+async fn clients_page(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
+    if let Err(r) = check_auth(&state, &headers).await { return r; }
+    Html(templates::CLIENTS_HTML.to_string()).into_response()
+}
+
+async fn vpn_page(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
+    if let Err(r) = check_auth(&state, &headers).await { return r; }
+    Html(templates::VPN_HTML.to_string()).into_response()
 }
 
 async fn logs_page(State(state): State<AppState>, headers: axum::http::HeaderMap) -> Response {
