@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+<title>Connected Clients</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📡</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="container">
+  <div class="header-flex">
+    <div class="header-left">
+      <a href="/" style="display:inline-block;margin-right:0.75rem;color:#00d9ff;text-decoration:none;font-size:1.5rem;">&larr;</a>
+      <h1 style="margin:0;">Connected Clients</h1>
+    </div>
+  </div>
+
+  <div id="client-count" class="scan-status">
+    <span id="client-count-text">Loading...</span>
+    <span><a href="/" class="nav-button" style="display:inline-block;padding:0.3rem 0.9rem;font-size:0.8rem;text-decoration:none;">🏠 Home</a></span>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Hostname</th>
+          <th>IP</th>
+          <th>MAC</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="client-rows">
+        <tr><td colspan="5" style="text-align:center;color:#888;padding:1rem;"><span class="spinner"></span> Loading clients...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+let pollInterval = null;
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function statusBadge(client) {
+  if (client.blocked) return '<span class="connected-badge" style="background:linear-gradient(135deg,#f44336,#d32f2f);">Blocked</span>';
+  if (client.active) return '<span class="connected-badge" style="background:linear-gradient(135deg,#4caf50,#388e3c);">Active</span>';
+  return '<span class="connected-badge" style="background:linear-gradient(135deg,#888,#666);">Inactive</span>';
+}
+
+async function fetchClients() {
+  try {
+    const r = await fetch('/api/clients');
+    const data = await r.json();
+    const clients = data.clients || [];
+    const tbody = document.getElementById('client-rows');
+    const countEl = document.getElementById('client-count-text');
+
+    countEl.textContent = clients.length + ' client' + (clients.length !== 1 ? 's' : '') + ' connected';
+
+    if (clients.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#888;padding:1rem;">No clients connected.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = clients.map(function(c) {
+      const hostname = c.hostname || escapeHtml(c.ip);
+      const actionBtn = c.blocked
+        ? '<button class="ok-button" onclick="unblockClient(\'' + c.ip + '\')" style="background:linear-gradient(135deg,#4caf50,#388e3c);font-size:0.75rem;padding:0.25rem 0.6rem;">Unblock</button>'
+        : '<button class="red-button" onclick="blockClient(\'' + c.ip + '\')" style="font-size:0.75rem;padding:0.25rem 0.6rem;">Disconnect</button>';
+      return '<tr>' +
+        '<td><strong>' + escapeHtml(hostname) + '</strong></td>' +
+        '<td>' + escapeHtml(c.ip) + '</td>' +
+        '<td style="font-size:0.8rem;">' + escapeHtml(c.mac) + '</td>' +
+        '<td>' + statusBadge(c) + '</td>' +
+        '<td>' + actionBtn + '</td>' +
+        '</tr>';
+    }).join('');
+  } catch {
+    document.getElementById('client-rows').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#f44336;padding:1rem;">Failed to load clients.</td></tr>';
+  }
+}
+
+async function blockClient(ip) {
+  try {
+    const r = await fetch('/api/clients/disconnect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ip: ip}),
+    });
+    const data = await r.json();
+    if (data.success) fetchClients();
+  } catch {}
+}
+
+async function unblockClient(ip) {
+  try {
+    const r = await fetch('/api/clients/unblock', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ip: ip}),
+    });
+    const data = await r.json();
+    if (data.success) fetchClients();
+  } catch {}
+}
+
+fetchClients();
+pollInterval = setInterval(fetchClients, 10000);
+</script>
+</body>
+</html>

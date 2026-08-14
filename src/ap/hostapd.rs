@@ -46,7 +46,7 @@ fn generate_conf(cfg: &Config) -> Result<(), String> {
         _ => "g",
     };
 
-    let mut extra = String::from("ieee80211n=1\nwmm_enabled=1\n");
+    let mut extra = String::from("ieee80211n=1\nwmm_enabled=1\nuapsd_advertisement_enabled=0\n");
 
     if hw_mode == "a" {
         extra.push_str("ht_capab=[HT40+][HT40-][LDPC][SHORT-GI-20][SHORT-GI-40][RX-STBC1]\n");

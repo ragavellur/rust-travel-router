@@ -111,6 +111,20 @@ function buildForm(cfg) {
       </tr>
     </table>
 
+    <h2>Power Mode</h2>
+    <table class="form-table">
+      <tr>
+        <td>Mode</td>
+        <td>
+          <select id="power_mode">
+            <option value="performance"${cfg.power_mode === 'performance' ? ' selected' : ''}>Maximum Performance</option>
+            <option value="powersave"${cfg.power_mode === 'powersave' ? ' selected' : ''}>Power Saving</option>
+          </select>
+          <div class="hint">Maximum Performance: full CPU speed, optimized routing. Power Saving: lower CPU speed, saves battery on portable devices.</div>
+        </td>
+      </tr>
+    </table>
+
     <h2>Web Interface</h2>
     <table class="form-table">
       <tr>
@@ -126,7 +140,7 @@ function buildForm(cfg) {
     <p style="color:#888;font-size:0.85rem;margin-bottom:0.5rem;">Reset all settings to defaults and restart services.</p>
     <button class="ok-button" onclick="factoryReset()" style="background:linear-gradient(135deg,#f093fb 0%,#f5576c 100%);">Reset to Defaults</button>
 
-    <button class="ok-button" onclick="saveConfig()" style="margin-top:0.75rem;">Save &amp; Apply</button>
+    <button id="save-btn" class="ok-button" onclick="saveConfig()" style="margin-top:0.75rem;">Save &amp; Apply</button>
   `;
 }
 
@@ -163,7 +177,7 @@ function showMessage(text, type) {
 }
 
 async function saveConfig() {
-  const btn = document.querySelector('#config-form .ok-button');
+  const btn = document.getElementById('save-btn');
   btn.disabled = true;
   btn.textContent = 'Applying...';
   showMessage('', '');
@@ -174,10 +188,11 @@ async function saveConfig() {
     ap_channel: parseInt(document.getElementById('ap_channel').value),
     ap_band: document.getElementById('ap_band').value,
     ap_ip: document.getElementById('ap_ip').value.trim(),
-    ap_netmask: document.getElementById('ap_netmask').value.trim(),
+    ap_netmask: document.getElementById('ap_netmask').value.trim() || document.getElementById('ap_ip').value.trim().includes('/') ? '' : '255.255.255.0',
     dhcp_start: document.getElementById('dhcp_start').value.trim(),
     dhcp_end: document.getElementById('dhcp_end').value.trim(),
     dhcp_lease_hours: parseInt(document.getElementById('dhcp_lease_hours').value) || 24,
+    power_mode: document.getElementById('power_mode').value,
     web_password: document.getElementById('web_password').value,
   };
 
