@@ -464,6 +464,91 @@ pub fn gen_peer(cfg: &Config, name: &str) -> Result<(WgPeer, String), String> {
     Ok((peer, conf))
 }
 
+pub fn import_conf(text: &str) -> Result<crate::config::VpnConfig, String> {
+    let mut vpn = crate::config::VpnConfig {
+        backend: "wireguard".into(),
+        role: "travel".into(),
+        ..Default::default()
+    };
+    let mut in_interface = false;
+    let mut in_peer = false;
+    let mut address_seen = false;
+    let mut required = true;
+
+    for raw in text.lines() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            let section = line[1..line.len() - 1].trim();
+            in_interface = section.eq_ignore_ascii_case("interface");
+            in_peer = section.eq_ignore_ascii_case("peer");
+            continue;
+        }
+        let (key, value) = match line.split_once('=') {
+            Some((k, v)) => (k.trim().to_ascii_lowercase(), v.trim()),
+            None => continue,
+        };
+        if in_interface {
+            match key.as_str() {
+                "privatekey" => vpn.wg_private_key = value.to_string(),
+                "address" => {
+                    if address_seen {
+                        continue;
+                    }
+                    if let Some(first) = value.split(',').map(str::trim).next() {
+                        if !first.contains(':') {
+                            vpn.wg_address = first.to_string();
+                            address_seen = true;
+                        }
+                    }
+                }
+                "dns" => {
+                    if let Some(first) = value.split(',').map(str::trim).next() {
+                        if !first.contains(':') {
+                            vpn.wg_dns = first.to_string();
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else if in_peer {
+            match key.as_str() {
+                "publickey" => vpn.wg_peer_public_key = value.to_string(),
+                "presharedkey" => vpn.wg_preshared_key = value.to_string(),
+                "endpoint" => vpn.wg_endpoint = value.to_string(),
+                "persistentkeepalive" => {
+                    vpn.wg_keepalive = value
+                        .parse::<u32>()
+                        .map_err(|_| format!("Invalid PersistentKeepalive: {value}"))?;
+                }
+                "allowedips" => {
+                    vpn.wg_route_all = value
+                        .split(',')
+                        .map(str::trim)
+                        .any(|entry| entry == "0.0.0.0/0");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if required && vpn.wg_private_key.is_empty() {
+        return Err("The config is missing a PrivateKey in [Interface]".into());
+    }
+    if required && !address_seen {
+        return Err("The config is missing an IPv4 Address in [Interface]".into());
+    }
+    if required && vpn.wg_peer_public_key.is_empty() {
+        return Err("The config is missing a Peer PublicKey".into());
+    }
+    if required && vpn.wg_endpoint.is_empty() {
+        return Err("The config is missing a Peer Endpoint (host:port)".into());
+    }
+    Ok(vpn)
+}
+
 pub async fn apply(cfg: &Config) -> Result<(), String> {
     nft_teardown();
     match cfg.vpn.backend.as_str() {
@@ -673,5 +758,65 @@ mod tests {
     fn generate_table_nats_wg_clients() {
         let t = generate_table(&test_cfg());
         assert!(t.contains("iifname \"wg0\" masquerade"));
+    }
+
+    const SAMPLE_CONF: &str = r#"[Interface]
+PrivateKey = 9AhSrvIeJ8I8hT6kq2yY8V8XpQwV4oZv8N0bQcWaRmI=
+Address = 10.2.0.2/32, fd7a:115c:a1e0::2/128
+DNS = 10.2.0.1, fd7a:115c:a1e0::1
+
+[Peer]
+PublicKey = hgBfOaXxYz0AbCdeFgHiJkLmNoPqRsTuVwXyZ012345=
+PresharedKey = 6x7dH2tUvXyZaBcDeFgHiJkLmNoPqRsTuVwXyZ012345=
+Endpoint = myhome.example.com:51820
+PersistentKeepalive = 25
+AllowedIPs = 0.0.0.0/0, ::/0
+"#;
+
+    #[test]
+    fn import_conf_full_route_all() {
+        let vpn = import_conf(SAMPLE_CONF).unwrap();
+        assert_eq!(vpn.backend, "wireguard");
+        assert_eq!(vpn.role, "travel");
+        assert_eq!(vpn.wg_private_key, "9AhSrvIeJ8I8hT6kq2yY8V8XpQwV4oZv8N0bQcWaRmI=");
+        assert_eq!(vpn.wg_address, "10.2.0.2/32");
+        assert_eq!(vpn.wg_dns, "10.2.0.1");
+        assert_eq!(vpn.wg_peer_public_key, "hgBfOaXxYz0AbCdeFgHiJkLmNoPqRsTuVwXyZ012345=");
+        assert_eq!(vpn.wg_preshared_key, "6x7dH2tUvXyZaBcDeFgHiJkLmNoPqRsTuVwXyZ012345=");
+        assert_eq!(vpn.wg_endpoint, "myhome.example.com:51820");
+        assert_eq!(vpn.wg_keepalive, 25);
+        assert!(vpn.wg_route_all);
+    }
+
+    #[test]
+    fn import_conf_split_tunnel_disables_route_all() {
+        let conf = SAMPLE_CONF.replace("AllowedIPs = 0.0.0.0/0, ::/0", "AllowedIPs = 10.2.0.0/24");
+        let vpn = import_conf(&conf).unwrap();
+        assert!(!vpn.wg_route_all);
+    }
+
+    #[test]
+    fn import_conf_rejects_missing_required_fields() {
+        assert!(import_conf("[Interface]\nPrivateKey = x\n").is_err());
+        assert!(import_conf("[Interface]\nPrivateKey = x\nAddress = 10.0.0.2/24\n").is_err());
+        assert!(import_conf("[Interface]\nAddress = 10.0.0.2/24\n[Peer]\nEndpoint = h:1\n").is_err());
+        let mut conf = SAMPLE_CONF.to_string();
+        conf = conf.replace("PrivateKey = ", "Nope = ");
+        assert!(import_conf(&conf).is_err());
+    }
+
+    #[test]
+    fn import_conf_ignores_comments_and_blank_lines() {
+        let conf = "# a comment\n\n[Interface]\n  PrivateKey = KEY = EXTRA\nAddress = 10.2.0.2/24 # inline\n\n[Peer]\nPublicKey = PK\nEndpoint = host:51820\n";
+        let vpn = import_conf(conf).unwrap();
+        assert_eq!(vpn.wg_private_key, "KEY = EXTRA");
+        assert_eq!(vpn.wg_address, "10.2.0.2/24");
+        assert_eq!(vpn.wg_peer_public_key, "PK");
+    }
+
+    #[test]
+    fn import_conf_invalid_keepalive_rejected() {
+        let conf = SAMPLE_CONF.replace("PersistentKeepalive = 25", "PersistentKeepalive = abc");
+        assert!(import_conf(&conf).is_err());
     }
 }
