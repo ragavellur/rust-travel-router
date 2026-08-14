@@ -291,6 +291,9 @@ impl VpnConfig {
                     if self.wg_listen_port == 0 {
                         errors.push("WireGuard listen port must be 1-65535".into());
                     }
+                    if self.wg_endpoint.is_empty() {
+                        errors.push("Home endpoint is required — the public address travel devices use to reach this box, e.g. myhome.example.com:51820".into());
+                    }
                     let mut seen = std::collections::HashSet::new();
                     for p in &self.wg_peers {
                         if p.public_key.is_empty() {

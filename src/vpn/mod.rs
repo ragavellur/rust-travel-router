@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::config::{Config, WgPeer};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
@@ -203,6 +203,7 @@ table inet travel-vpn {{
         type nat hook postrouting priority srcnat; policy accept;
         oifname "wg0" masquerade
         oifname "tailscale0" masquerade
+        iifname "wg0" masquerade
     }}
 
     chain forward {{
@@ -237,6 +238,9 @@ table inet travel-vpn {{
 
 pub fn nft_assert(cfg: &Config) -> Result<(), String> {
     fs::write(VPN_NFT_FILE, generate_table(cfg)).map_err(|e| format!("Write vpn nft: {e}"))?;
+    let _ = Command::new("sysctl")
+        .args(["-w", "net.ipv4.ip_forward=1"])
+        .output();
     run("nft", &["-f", VPN_NFT_FILE]).map(|_| ())
 }
 
@@ -352,14 +356,119 @@ pub fn wg_client_apply(cfg: &Config) -> Result<(), String> {
     Ok(())
 }
 
+fn wg_server_address(cfg: &Config) -> String {
+    let net = wg_server_subnet(cfg);
+    if let Some((netip, prefix)) = net.split_once('/') {
+        let mut oct: Vec<&str> = netip.split('.').collect();
+        if oct.len() == 4 {
+            oct[3] = "1";
+        }
+        format!("{}/{}", oct.join("."), prefix)
+    } else {
+        "10.0.0.1/24".into()
+    }
+}
+
+fn wg_server_conf(cfg: &Config) -> Result<String, String> {
+    let ap_net = cfg.ap_network().map_err(|e| e.to_string())?;
+    let ap_subnet = format!("{}/{}", ap_net.network(), ap_net.prefix());
+    let mut conf = String::new();
+    conf.push_str("[Interface]\n");
+    conf.push_str(&format!("PrivateKey = {}\n", cfg.vpn.wg_server_private_key));
+    conf.push_str(&format!("Address = {}\n", wg_server_address(cfg)));
+    conf.push_str(&format!("ListenPort = {}\n", cfg.vpn.wg_listen_port));
+    for peer in &cfg.vpn.wg_peers {
+        conf.push_str(&format!("\n# {}\n[Peer]\n", peer.name));
+        conf.push_str(&format!("PublicKey = {}\n", peer.public_key));
+        conf.push_str(&format!("AllowedIPs = {}, {}\n", peer.tunnel_ip, ap_subnet));
+    }
+    Ok(conf)
+}
+
+pub fn write_wg_server_conf(cfg: &Config) -> Result<(), String> {
+    let dir = std::path::PathBuf::from("/etc/wireguard");
+    fs::create_dir_all(&dir).map_err(|e| format!("Create /etc/wireguard: {e}"))?;
+    let path = dir.join("wg0.conf");
+    fs::write(&path, wg_server_conf(cfg)?).map_err(|e| format!("Write wg0.conf: {e}"))?;
+    let _ = fs::set_permissions(&path, PermissionsExt::from_mode(0o600));
+    Ok(())
+}
+
+pub fn wg_server_apply(cfg: &Config) -> Result<(), String> {
+    write_wg_server_conf(cfg)?;
+    let _ = wg_quick_down();
+    nft_assert(cfg)?;
+    wg_quick_up()?;
+    Ok(())
+}
+
+pub fn next_tunnel_ip(cfg: &Config) -> Result<String, String> {
+    let used: std::collections::HashSet<String> = cfg
+        .vpn
+        .wg_peers
+        .iter()
+        .map(|p| p.tunnel_ip.clone())
+        .collect();
+    for n in 2..=254u8 {
+        let ip = format!("10.0.0.{n}");
+        if !used.contains(&ip) {
+            return Ok(ip);
+        }
+    }
+    Err("No free tunnel IPs left in 10.0.0.0/24".into())
+}
+
+pub fn peer_client_conf(cfg: &Config, peer: &WgPeer, private_key: &str) -> Result<String, String> {
+    if cfg.vpn.wg_server_public_key.is_empty() {
+        return Err("Server public key is missing — generate the server key first".into());
+    }
+    if cfg.vpn.wg_endpoint.is_empty() {
+        return Err(
+            "Home endpoint is missing — the address travel devices use to reach this box, e.g. myhome.example.com:51820"
+                .into(),
+        );
+    }
+    let allowed = if cfg.vpn.wg_route_all {
+        "0.0.0.0/0".to_string()
+    } else {
+        wg_server_subnet(cfg)
+    };
+    let mut conf = String::new();
+    conf.push_str("[Interface]\n");
+    conf.push_str(&format!("PrivateKey = {}\n", private_key));
+    conf.push_str(&format!("Address = {}/24\n", peer.tunnel_ip));
+    if !cfg.vpn.wg_dns.is_empty() {
+        conf.push_str(&format!("DNS = {}\n", cfg.vpn.wg_dns));
+    }
+    conf.push_str("ListenPort = 51820\n\n");
+    conf.push_str("[Peer]\n");
+    conf.push_str(&format!("PublicKey = {}\n", cfg.vpn.wg_server_public_key));
+    if !cfg.vpn.wg_preshared_key.is_empty() {
+        conf.push_str(&format!("PresharedKey = {}\n", cfg.vpn.wg_preshared_key));
+    }
+    conf.push_str(&format!("Endpoint = {}\n", cfg.vpn.wg_endpoint));
+    conf.push_str(&format!("PersistentKeepalive = {}\n", cfg.vpn.wg_keepalive));
+    conf.push_str(&format!("AllowedIPs = {allowed}\n"));
+    Ok(conf)
+}
+
+pub fn gen_peer(cfg: &Config, name: &str) -> Result<(WgPeer, String), String> {
+    let (privkey, pubkey) = gen_keypair()?;
+    let tunnel_ip = next_tunnel_ip(cfg)?;
+    let peer = WgPeer {
+        name: name.to_string(),
+        public_key: pubkey,
+        tunnel_ip: tunnel_ip.clone(),
+    };
+    let conf = peer_client_conf(cfg, &peer, &privkey)?;
+    Ok((peer, conf))
+}
+
 pub async fn apply(cfg: &Config) -> Result<(), String> {
     nft_teardown();
     match cfg.vpn.backend.as_str() {
         "wireguard" if cfg.vpn.role == "travel" => wg_client_apply(cfg),
-        "wireguard" => {
-            let _ = wg_quick_down();
-            Err("WireGuard home server role not yet implemented".into())
-        }
+        "wireguard" => wg_server_apply(cfg),
         "tailscale" => {
             let _ = wg_quick_down();
             Err("Tailscale backend not yet implemented".into())
@@ -469,5 +578,100 @@ mod tests {
         let (privkey, pubkey) = gen_keypair().unwrap();
         assert!(privkey.starts_with("O")) /* openssh base64 */ ;
         assert!(!pubkey.is_empty());
+    }
+
+    #[test]
+    fn wg_server_address_derived_from_client_subnet() {
+        let cfg = test_cfg();
+        assert_eq!(wg_server_address(&cfg), "10.0.0.1/24");
+        let mut cfg2 = test_cfg();
+        cfg2.vpn.wg_address = "10.9.0.2/24".into();
+        assert_eq!(wg_server_address(&cfg2), "10.9.0.1/24");
+    }
+
+    #[test]
+    fn server_conf_lists_peers_and_ap_subnet() {
+        let cfg = Config {
+            vpn: crate::config::VpnConfig {
+                backend: "wireguard".into(),
+                role: "home".into(),
+                wg_server_private_key: "SRVKEY".into(),
+                wg_listen_port: 51820,
+                wg_peers: vec![crate::config::WgPeer {
+                    name: "travel".into(),
+                    public_key: "PEERKEY".into(),
+                    tunnel_ip: "10.0.0.2".into(),
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let conf = wg_server_conf(&cfg).unwrap();
+        assert!(conf.contains("PrivateKey = SRVKEY"));
+        assert!(conf.contains("Address = 10.0.0.1/24"));
+        assert!(conf.contains("ListenPort = 51820"));
+        assert!(conf.contains("# travel\n[Peer]"));
+        assert!(conf.contains("PublicKey = PEERKEY"));
+        assert!(conf.contains("AllowedIPs = 10.0.0.2, 192.168.4.0/24"));
+    }
+
+    #[test]
+    fn next_tunnel_ip_skips_used() {
+        let cfg = Config {
+            vpn: crate::config::VpnConfig {
+                backend: "wireguard".into(),
+                role: "home".into(),
+                wg_peers: vec![
+                    crate::config::WgPeer {
+                        name: "a".into(),
+                        public_key: "A".into(),
+                        tunnel_ip: "10.0.0.2".into(),
+                    },
+                    crate::config::WgPeer {
+                        name: "b".into(),
+                        public_key: "B".into(),
+                        tunnel_ip: "10.0.0.3".into(),
+                    },
+                ],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert_eq!(next_tunnel_ip(&cfg).unwrap(), "10.0.0.4");
+    }
+
+    #[test]
+    fn peer_client_conf_builds_importable_config() {
+        let cfg = Config {
+            vpn: crate::config::VpnConfig {
+                backend: "wireguard".into(),
+                role: "home".into(),
+                wg_server_public_key: "SRVPUB".into(),
+                wg_endpoint: "myhome.example.com:51820".into(),
+                wg_dns: "10.0.0.1".into(),
+                wg_keepalive: 25,
+                wg_route_all: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let peer = crate::config::WgPeer {
+            name: "travel".into(),
+            public_key: "PEERKEY".into(),
+            tunnel_ip: "10.0.0.2".into(),
+        };
+        let conf = peer_client_conf(&cfg, &peer, "PRIVKEY").unwrap();
+        assert!(conf.contains("PrivateKey = PRIVKEY"));
+        assert!(conf.contains("Address = 10.0.0.2/24"));
+        assert!(conf.contains("DNS = 10.0.0.1"));
+        assert!(conf.contains("PublicKey = SRVPUB"));
+        assert!(conf.contains("Endpoint = myhome.example.com:51820"));
+        assert!(conf.contains("AllowedIPs = 0.0.0.0/0"));
+    }
+
+    #[test]
+    fn generate_table_nats_wg_clients() {
+        let t = generate_table(&test_cfg());
+        assert!(t.contains("iifname \"wg0\" masquerade"));
     }
 }
