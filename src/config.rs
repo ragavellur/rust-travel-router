@@ -52,6 +52,79 @@ pub struct Config {
 
     #[serde(default = "default_ap_band")]
     pub ap_band: String,
+
+    #[serde(default = "default_power_mode")]
+    pub power_mode: String,
+
+    #[serde(default)]
+    pub vpn: VpnConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VpnConfig {
+    #[serde(default = "default_vpn_backend")]
+    pub backend: String,
+
+    #[serde(default = "default_vpn_role")]
+    pub role: String,
+
+    #[serde(default)]
+    pub ts_auth_key: String,
+
+    #[serde(default)]
+    pub ts_hostname: String,
+
+    #[serde(default)]
+    pub ts_exit_node: String,
+
+    #[serde(default)]
+    pub ts_advertise_routes: String,
+
+    #[serde(default = "default_true")]
+    pub ts_allow_lan: bool,
+
+    #[serde(default)]
+    pub wg_private_key: String,
+
+    #[serde(default)]
+    pub wg_peer_public_key: String,
+
+    #[serde(default)]
+    pub wg_endpoint: String,
+
+    #[serde(default = "default_wg_address")]
+    pub wg_address: String,
+
+    #[serde(default)]
+    pub wg_dns: String,
+
+    #[serde(default)]
+    pub wg_preshared_key: String,
+
+    #[serde(default = "default_wg_keepalive")]
+    pub wg_keepalive: u32,
+
+    #[serde(default = "default_true")]
+    pub wg_route_all: bool,
+
+    #[serde(default = "default_wg_listen_port")]
+    pub wg_listen_port: u16,
+
+    #[serde(default)]
+    pub wg_server_private_key: String,
+
+    #[serde(default)]
+    pub wg_server_public_key: String,
+
+    #[serde(default)]
+    pub wg_peers: Vec<WgPeer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct WgPeer {
+    pub name: String,
+    pub public_key: String,
+    pub tunnel_ip: String,
 }
 
 fn default_ap_ssid() -> String { "RagaNeoAir".into() }
@@ -65,6 +138,39 @@ fn default_dhcp_lease_hours() -> u32 { 24 }
 fn default_hostname() -> String { "travel-router".into() }
 fn default_sta_interface() -> String { "wlan0".into() }
 fn default_ap_interface() -> String { "wlan1".into() }
+fn default_power_mode() -> String { "performance".into() }
+fn default_vpn_backend() -> String { "none".into() }
+fn default_vpn_role() -> String { "travel".into() }
+fn default_true() -> bool { true }
+fn default_wg_address() -> String { "10.0.0.2/24".into() }
+fn default_wg_keepalive() -> u32 { 25 }
+fn default_wg_listen_port() -> u16 { 51820 }
+
+impl Default for VpnConfig {
+    fn default() -> Self {
+        Self {
+            backend: default_vpn_backend(),
+            role: default_vpn_role(),
+            ts_auth_key: String::new(),
+            ts_hostname: String::new(),
+            ts_exit_node: String::new(),
+            ts_advertise_routes: String::new(),
+            ts_allow_lan: true,
+            wg_private_key: String::new(),
+            wg_peer_public_key: String::new(),
+            wg_endpoint: String::new(),
+            wg_address: default_wg_address(),
+            wg_dns: String::new(),
+            wg_preshared_key: String::new(),
+            wg_keepalive: default_wg_keepalive(),
+            wg_route_all: true,
+            wg_listen_port: default_wg_listen_port(),
+            wg_server_private_key: String::new(),
+            wg_server_public_key: String::new(),
+            wg_peers: Vec::new(),
+        }
+    }
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -85,6 +191,8 @@ impl Default for Config {
             wifi_backend: String::new(),
             web_password: String::new(),
             ap_band: default_ap_band(),
+            power_mode: default_power_mode(),
+            vpn: VpnConfig::default(),
         }
     }
 }
@@ -95,7 +203,7 @@ impl Config {
             self.ap_ip.parse()
                 .map_err(|e| format!("Invalid AP IP: {e}"))
         } else {
-            Ipv4Network::new(
+            Ipv4Network::with_netmask(
                 self.ap_ip.parse().map_err(|e| format!("Invalid AP IP: {e}"))?,
                 self.ap_netmask.parse().map_err(|e| format!("Invalid netmask: {e}"))?,
             )
@@ -134,6 +242,71 @@ impl Config {
         if let Err(e) = self.ap_network() {
             errors.push(format!("Invalid AP IP/netmask: {e}"));
         }
+        if !["performance", "powersave"].contains(&self.power_mode.as_str()) {
+            errors.push("power_mode must be 'performance' or 'powersave'".into());
+        }
+        if let Err(v) = self.vpn.validate() {
+            errors.extend(v);
+        }
+        if errors.is_empty() { Ok(()) } else { Err(errors) }
+    }
+}
+
+impl VpnConfig {
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        let mut errors = Vec::new();
+        if !["none", "tailscale", "wireguard"].contains(&self.backend.as_str()) {
+            errors.push("VPN backend must be 'none', 'tailscale', or 'wireguard'".into());
+        }
+        if !["home", "travel"].contains(&self.role.as_str()) {
+            errors.push("VPN role must be 'home' or 'travel'".into());
+        }
+        match self.backend.as_str() {
+            "tailscale" => {
+                if self.ts_auth_key.is_empty() {
+                    errors.push("Tailscale auth key is required (Tailscale Admin Console → Settings → Keys → Generate auth key)".into());
+                }
+                if self.role == "travel" && self.ts_exit_node.is_empty() {
+                    errors.push("Tailscale home node is required for the travel box (the exit node that stays at home)".into());
+                }
+            }
+            "wireguard" => {
+                if self.role == "travel" {
+                    if self.wg_private_key.is_empty() {
+                        errors.push("WireGuard private key is required (press 'Generate my key' to make one)".into());
+                    }
+                    if self.wg_peer_public_key.is_empty() {
+                        errors.push("WireGuard peer public key is required (copy it from the home side)".into());
+                    }
+                    if self.wg_endpoint.is_empty() {
+                        errors.push("WireGuard endpoint is required, e.g. myhome.example.com:51820".into());
+                    }
+                    if self.wg_address.parse::<Ipv4Network>().is_err() {
+                        errors.push("WireGuard tunnel address must be a valid CIDR, e.g. 10.0.0.2/24".into());
+                    }
+                } else {
+                    if self.wg_server_private_key.is_empty() {
+                        errors.push("WireGuard server private key is required (press 'Generate server key')".into());
+                    }
+                    if self.wg_listen_port == 0 {
+                        errors.push("WireGuard listen port must be 1-65535".into());
+                    }
+                    let mut seen = std::collections::HashSet::new();
+                    for p in &self.wg_peers {
+                        if p.public_key.is_empty() {
+                            errors.push(format!("Peer '{}' is missing its public key", p.name));
+                        }
+                        if p.tunnel_ip.parse::<std::net::Ipv4Addr>().is_err() {
+                            errors.push(format!("Peer '{}' has an invalid tunnel IP: {}", p.name, p.tunnel_ip));
+                        }
+                        if !seen.insert(p.tunnel_ip.clone()) {
+                            errors.push(format!("Duplicate tunnel IP among peers: {}", p.tunnel_ip));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
         if errors.is_empty() { Ok(()) } else { Err(errors) }
     }
 }
@@ -154,4 +327,83 @@ pub fn save(path: &Path, cfg: &Config) -> Result<(), Box<dyn std::error::Error>>
     fs::write(&tmp, &data)?;
     fs::rename(&tmp, path)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_config_without_vpn_loads() {
+        let old = r#"{"ap_ssid":"Travel-Net","ap_password":"travelnet"}"#;
+        let cfg: Config = serde_json::from_str(old).unwrap();
+        assert_eq!(cfg.vpn.backend, "none");
+        assert_eq!(cfg.vpn.role, "travel");
+        assert_eq!(cfg.vpn.wg_listen_port, 51820);
+        assert!(cfg.vpn.wg_route_all);
+        assert!(cfg.vpn.ts_allow_lan);
+    }
+
+    #[test]
+    fn vpn_default_is_disabled() {
+        let cfg = Config::default();
+        assert_eq!(cfg.vpn.backend, "none");
+        assert!(cfg.vpn.wg_peers.is_empty());
+        assert!(cfg.vpn.validate().is_ok());
+    }
+
+    #[test]
+    fn vpn_validation_catches_missing_tailscale_fields() {
+        let cfg = Config {
+            vpn: VpnConfig {
+                backend: "tailscale".into(),
+                role: "travel".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let errs = cfg.vpn.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("auth key")));
+        assert!(errs.iter().any(|e| e.contains("home node")));
+    }
+
+    #[test]
+    fn vpn_validation_catches_missing_wireguard_client_fields() {
+        let cfg = Config {
+            vpn: VpnConfig {
+                backend: "wireguard".into(),
+                role: "travel".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let errs = cfg.vpn.validate().unwrap_err();
+        assert!(errs.iter().any(|e| e.contains("private key")));
+        assert!(errs.iter().any(|e| e.contains("public key")));
+        assert!(errs.iter().any(|e| e.contains("endpoint")));
+    }
+
+    #[test]
+    fn vpn_serialization_roundtrip() {
+        let cfg = Config {
+            vpn: VpnConfig {
+                backend: "wireguard".into(),
+                role: "home".into(),
+                wg_listen_port: 51820,
+                wg_server_private_key: "SRVKEY".into(),
+                wg_peers: vec![WgPeer {
+                    name: "travel".into(),
+                    public_key: "PEERKEY".into(),
+                    tunnel_ip: "10.0.0.2".into(),
+                }],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.vpn.backend, "wireguard");
+        assert_eq!(back.vpn.wg_peers[0].name, "travel");
+        assert_eq!(back.vpn.wg_peers[0].tunnel_ip, "10.0.0.2");
+    }
 }
