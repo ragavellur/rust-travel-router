@@ -1,0 +1,108 @@
+{
+  "project": "travel-net VPN feature (Tailscale + WireGuard, NomadEOS-style)",
+  "doc_plan": "docs/VPN_TECHNICAL.md",
+  "doc_guide": "docs/VPN_GUIDE.md",
+  "created": "2026-08-14",
+  "statuses": ["todo", "inprogress", "completed"],
+  "legend": "todo = not started, inprogress = being worked on, completed = done & verified",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Docs + task tracker: write VPN_TECHNICAL.md, VPN_GUIDE.md, TASKS.json; commit & push to GitHub",
+      "description": "Create the technical implementation document and the non-technical end-user guide, plus this tracker. Commit the three files and push to main (docs only, leaving existing source changes untouched).",
+      "depends_on": [],
+      "status": "inprogress"
+    },
+    {
+      "id": "T2",
+      "title": "Config schema: add VpnConfig + WgPeer to src/config.rs",
+      "description": "Nested #[serde(default)] vpn object with Tailscale + WireGuard fields, serde defaults + impl Default (backward compatible), VpnConfig::validate() called from Config::validate().",
+      "depends_on": ["T1"],
+      "status": "todo"
+    },
+    {
+      "id": "T3",
+      "title": "VPN core module skeleton: src/vpn/mod.rs (status, nft table, install detection)",
+      "description": "vpn::status() -> VpnStatus (installed bins, tailscale/wg state, kill-switch flag), shared travel-vpn nft table assert/teardown helpers, ensure_install() detection, error surfacing.",
+      "depends_on": ["T2"],
+      "status": "todo"
+    },
+    {
+      "id": "T4",
+      "title": "WireGuard client (travel): conf writer + wg-quick lifecycle + NAT + MSS clamp",
+      "description": "Write /etc/wireguard/wg0.conf for client role, wg-quick up/down, MASQUERADE ap->wg0, MSS clamp 1380/PMTU 1440, kill switch (route-all).",
+      "depends_on": ["T3"],
+      "status": "todo"
+    },
+    {
+      "id": "T5",
+      "title": "WireGuard server (home): keygen, peer add/remove, UDP open, client-config generator",
+      "description": "wg0.conf server role with wg_peers, open listen port in nft table, MASQUERADE wg subnet -> WAN, gen server keys, generate ready-to-paste client config for pairing, manual existing-machine steps shown in help.",
+      "depends_on": ["T3"],
+      "status": "todo"
+    },
+    {
+      "id": "T6",
+      "title": "WireGuard .conf import parser (esp32 mapping)",
+      "description": "import_conf(text) mapping PrivateKey/Address/DNS/PublicKey/PresharedKey/Endpoint/PersistentKeepalive/AllowedIPs->route_all; reject missing required keys, IPv4 only.",
+      "depends_on": ["T3"],
+      "status": "todo"
+    },
+    {
+      "id": "T7",
+      "title": "Tailscale lifecycle: installer helper, up/down for home & travel roles, boot re-auth",
+      "description": "tailscale up home (--advertise-exit-node --advertise-routes) and travel (--exit-node --exit-node-allow-lan-access --accept-routes), down on backend=none, runtime wait for tailscaled socket, boot re-auth from saved auth key (ro rootfs).",
+      "depends_on": ["T3"],
+      "status": "todo"
+    },
+    {
+      "id": "T8",
+      "title": "API endpoints + status: /api/vpn GET/POST, /import, /genkeys, /peers, /install; StatusResponse vpn field",
+      "description": "Add authed endpoints in src/web/api.rs following existing patterns; save + spawn vpn::apply in background; extend StatusResponse with VpnStatus.",
+      "depends_on": ["T4", "T5", "T6", "T7"],
+      "status": "todo"
+    },
+    {
+      "id": "T9",
+      "title": "/vpn web page + index nav/status + plain-language help text",
+      "description": "templates/vpn.html (role + backend toggle, dynamic fields, .conf import, keygen, peer table, status panel, 10s poll), register VPN_HTML + route + auth handler, index.html VPN nav button + dashboard status row, per-field .hint wording from VPN_TECHNICAL.md section 10.",
+      "depends_on": ["T8"],
+      "status": "todo"
+    },
+    {
+      "id": "T10",
+      "title": "Boot wiring: call vpn::apply in src/main.rs",
+      "description": "After AP/dnsmasq/firewall setup, if backend != none spawn/await vpn::apply; ensure ordering vs firewall ruleset (travel-vpn table re-asserted after apply_ruleset).",
+      "depends_on": ["T4", "T5", "T7"],
+      "status": "todo"
+    },
+    {
+      "id": "T11",
+      "title": "Firewall integration review: travel-vpn nft table vs flush ruleset + NM path",
+      "description": "Verify vpn table survives firewall::apply_ruleset flush, works on NM boxes (no ruleset), doesn't wipe travel-net-block; fix ordering; detect_uplink feedback loop check.",
+      "depends_on": ["T10"],
+      "status": "todo"
+    },
+    {
+      "id": "T12",
+      "title": "Packaging: wireguard-tools in Depends (all arches); postinst installs Tailscale but does NOT enable",
+      "description": "Add wireguard-tools to armhf/arm64/amd64 Depends; postinst downloads tailscale .deb from pkgs.tailscale.com per arch + dpkg -i + systemctl disable tailscaled (idempotent); reconcile debian/ and pkg_deb/ staging; ro-rootfs notes.",
+      "depends_on": ["T1"],
+      "status": "todo"
+    },
+    {
+      "id": "T13",
+      "title": "Build all 3 arches + deploy/test on Cubie A7A (travel role) + home-role test; republish apt repo",
+      "description": "cargo build --release + cargo-zigbuild for aarch64/armv7/x86_64; test travel role (WireGuard via import + pairing, Tailscale travel), home role (A7A eth0 + validate existing-Linux-machine guide), kill-switch test; rebuild 3 .debs, republish gh-pages, apt upgrade on RPi2.",
+      "depends_on": ["T8", "T10", "T11", "T12"],
+      "status": "todo"
+    },
+    {
+      "id": "T14",
+      "title": "README update + final end-user help polish + non-technical walkthrough test",
+      "description": "Add VPN section to README (link guide + tech doc), polish web-console help wording, run a fresh-eyes non-technical walkthrough, mark all tasks complete.",
+      "depends_on": ["T13", "T9"],
+      "status": "todo"
+    }
+  ]
+}
