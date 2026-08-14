@@ -33,7 +33,7 @@
       "depends_on": [
         "T2"
       ],
-      "status": "inprogress"
+      "status": "completed"
     },
     {
       "id": "T4",
@@ -42,7 +42,7 @@
       "depends_on": [
         "T3"
       ],
-      "status": "todo"
+      "status": "inprogress"
     },
     {
       "id": "T5",

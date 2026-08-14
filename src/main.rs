@@ -4,6 +4,7 @@ mod wifi;
 mod ap;
 mod dhcp;
 mod firewall;
+mod vpn;
 mod web;
 mod templates;
 
@@ -33,21 +34,30 @@ async fn main() {
     let backend = wifi::detect_backend(&cfg.wifi_backend);
     tracing::info!("WiFi backend: {backend:?}");
 
+    let uplink = firewall::detect_uplink(&cfg);
+    tracing::info!("Uplink interface: {uplink}");
+    firewall::apply_performance_tuning(&cfg);
+
     // Auto-connect STA if configured
     if !cfg.sta_ssid.is_empty() {
         let backend = wifi::detect_backend(&cfg.wifi_backend);
         let sta_iface = cfg.sta_interface.clone();
         let sta_ssid = cfg.sta_ssid.clone();
         let sta_password = cfg.sta_password.clone();
+        let cfg_for_tuning = cfg.clone();
         tokio::task::spawn_blocking(move || {
             tracing::info!("Auto-connecting to uplink STA: {sta_ssid}");
             if let Err(e) = wifi::connect::connect(&backend, &sta_ssid, &sta_password, &sta_iface) {
                 tracing::warn!("STA auto-connect failed: {e}");
             }
+            // Retry power save disable after STA connects
+            firewall::apply_performance_tuning(&cfg_for_tuning);
         });
     }
 
-    let _ = ap::start_ap(&cfg).await;
+    if let Err(e) = ap::start_ap(&cfg).await {
+        tracing::error!("Failed to start AP: {e}");
+    }
     let nm_backend = backend == wifi::Backend::NetworkManager;
     if !nm_backend {
         let _ = dhcp::start_dnsmasq(&cfg).await;
