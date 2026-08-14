@@ -7,10 +7,10 @@ Depends: network-manager, wpasupplicant, iw, wireguard-tools
 Section: net
 Priority: optional
 Filename: travel-net_0.1.0-1_amd64.deb
-Size: 1230962
-MD5sum: 70f584991b9764cacf7386f8fe657858
-SHA1: f603daaa3d8a29d5637871340f75bce3538b6ab6
-SHA256: bfda7bd29949650b1e0698f2001b4f29b88a6c8d3556d6c802cb720030977417
+Size: 1230904
+MD5sum: bad561be5bce2d184cf074d830821287
+SHA1: 9ffb6a2e2b3016741bae4809bda23c859cd097bb
+SHA256: 3b0fe16caf374671650dc851c45f0bf67f066dece40b84a67b4d8c6a20980fa4
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
  Features: AP+STA hybrid mode, web UI, WiFi scanning,
@@ -26,10 +26,10 @@ Depends: network-manager, wpasupplicant, iw, wireguard-tools
 Section: net
 Priority: optional
 Filename: travel-net_0.1.0-1_arm64.deb
-Size: 1180520
-MD5sum: eca9245bed6640eb97dc62fddf8a889d
-SHA1: 18ed92808af486c55cdf1a4d3d51e3a0fc1c3198
-SHA256: 2ae140e1fc56e8030e438f689707c8912789d57c88ba6c1ae781cf442229bfdb
+Size: 1180530
+MD5sum: 921a48cb004bd15cdf9f8e1985805156
+SHA1: 07e22f4db72c57c7bdcd3674f5f830f6258af941
+SHA256: a0996dc68e1e93ff01b4dfca678c71dc2a91bec6f1796214657efed234c81b10
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
  Features: AP+STA hybrid mode, web UI, WiFi scanning,
@@ -45,10 +45,10 @@ Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools
 Section: net
 Priority: optional
 Filename: travel-net_0.1.0-1_armhf.deb
-Size: 1126032
-MD5sum: fddc40a4089a5443391c5413fdd82ff2
-SHA1: 09a1655895877c647dcda55a231391779eab95ec
-SHA256: d3a0b946b7b747684fd3f2bc91383a119ba141804b64ad23a8cd6b7c360c3e7e
+Size: 1126046
+MD5sum: de39e00320b3a792540d7be9b3ec628e
+SHA1: fe174c8a4d8d6664161706767ad81e2cb32b8bb3
+SHA256: 457343e0ab62610501b4be13d03071f594c916a97210ba272863f052cf81a136
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
  Features: AP+STA hybrid mode, web UI, WiFi scanning,
