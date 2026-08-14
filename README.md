@@ -55,7 +55,8 @@ Any Linux SBC with at least one WiFi interface. Tested on:
 | Any x86-64 laptop | any | amd64 | ✓ (NM backend) |
 
 Requirements:
-- Two WiFi interfaces (one for AP, one for STA), OR a single interface that supports virtual interfaces (AP on wlan1, STA on wlan0)
+- Two WiFi interfaces (one for AP, one for STA), OR a single radio that supports virtual interfaces (AP on wlan1, STA on wlan0)
+- **Note on single-radio USB dongles** (e.g. Realtek RTL8188FU/FTV, `rtl8xxxu`): these cannot create a second virtual interface, so the AP will not start while the same dongle is used as STA. travel-net still installs and connects to upstream Wi-Fi on them; use an Ethernet uplink (eth0) instead, or a radio with a supported driver (brcmfmac/AIC8800).
 - `wpasupplicant` (or `network-manager`) and `iw` installed
 - For **hostapd backend** (brcmfmac chips): `hostapd`, `dnsmasq`, `nftables` also required
 - For **NM backend** (AIC8800 chips without hostapd support): `network-manager` handles AP, DHCP and NAT automatically
