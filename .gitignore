@@ -2,5 +2,4 @@ target/
 *.deb
 *.ipk
 .DS_Store
-pkg_deb/usr/sbin/travel-net
-pkg_deb/DEBIAN/control
+pkg_deb/

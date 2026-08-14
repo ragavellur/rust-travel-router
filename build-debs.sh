@@ -35,6 +35,7 @@ Description: Travel NAT Router with web UI
 EOF
     cp "target/$target/release/travel-net" pkg_deb/usr/sbin/travel-net
     chmod 755 pkg_deb/usr/sbin/travel-net
+    cp config/etc/travel-net/config.json pkg_deb/etc/travel-net/config.json
     dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.1.0-1_${arch}.deb"
     echo "=== $arch -> $OUT/travel-net_0.1.0-1_${arch}.deb ==="
 }

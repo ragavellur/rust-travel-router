@@ -498,8 +498,7 @@ fn wg_server_address(cfg: &Config) -> String {
 }
 
 fn wg_server_conf(cfg: &Config) -> Result<String, String> {
-    let ap_net = cfg.ap_network().map_err(|e| e.to_string())?;
-    let ap_subnet = format!("{}/{}", ap_net.network(), ap_net.prefix());
+    let _ap_net = cfg.ap_network().map_err(|e| e.to_string())?;
     let mut conf = String::new();
     conf.push_str("[Interface]\n");
     conf.push_str(&format!("PrivateKey = {}\n", cfg.vpn.wg_server_private_key));
@@ -508,7 +507,11 @@ fn wg_server_conf(cfg: &Config) -> Result<String, String> {
     for peer in &cfg.vpn.wg_peers {
         conf.push_str(&format!("\n# {}\n[Peer]\n", peer.name));
         conf.push_str(&format!("PublicKey = {}\n", peer.public_key));
-        conf.push_str(&format!("AllowedIPs = {}, {}\n", peer.tunnel_ip, ap_subnet));
+        // The travel box masquerades its AP traffic out wg0, so replies come
+        // back to this box addressed to the peer's tunnel IP. Routing the AP
+        // subnet through the tunnel here would clash with our own AP subnet
+        // and make `wg-quick up` roll back.
+        conf.push_str(&format!("AllowedIPs = {}\n", peer.tunnel_ip));
     }
     Ok(conf)
 }
@@ -793,8 +796,11 @@ mod tests {
             return;
         }
         let (privkey, pubkey) = gen_keypair().unwrap();
-        assert!(privkey.starts_with("O")) /* openssh base64 */ ;
-        assert!(!pubkey.is_empty());
+        assert_eq!(privkey.len(), 44, "wg genkey is base64 of 32 bytes");
+        assert!(privkey
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'+' || b == b'/' || b == b'='));
+        assert_eq!(pubkey.len(), 44);
     }
 
     #[test]
@@ -807,7 +813,7 @@ mod tests {
     }
 
     #[test]
-    fn server_conf_lists_peers_and_ap_subnet() {
+    fn server_conf_lists_peers() {
         let cfg = Config {
             vpn: crate::config::VpnConfig {
                 backend: "wireguard".into(),
@@ -829,7 +835,8 @@ mod tests {
         assert!(conf.contains("ListenPort = 51820"));
         assert!(conf.contains("# travel\n[Peer]"));
         assert!(conf.contains("PublicKey = PEERKEY"));
-        assert!(conf.contains("AllowedIPs = 10.0.0.2, 192.168.4.0/24"));
+        assert!(conf.contains("AllowedIPs = 10.0.0.2"));
+        assert!(!conf.contains("192.168.4.0/24"));
     }
 
     #[test]
