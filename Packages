@@ -11,10 +11,10 @@ SHA256: 4466768e54777835ff29e3febab1ee779f7ee88a80122be83829b0268b528e6a
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
-Turn any Linux SBC with WiFi into a travel NAT router.
-Features: AP+STA hybrid mode, web UI, WiFi scanning,
-VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
-Inspired by the ESP32 NAT Router.
+ Turn any Linux SBC with WiFi into a travel NAT router.
+ Features: AP+STA hybrid mode, web UI, WiFi scanning,
+ VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
+ Inspired by the ESP32 NAT Router.
 
 Package: travel-net
 Version: 0.1.0-1
@@ -29,10 +29,10 @@ SHA256: 7c5e68efab4b241a932bb9640abd88157b536d80eca1242f2e397dc7114ac755
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
-Turn any Linux SBC with WiFi into a travel NAT router.
-Features: AP+STA hybrid mode, web UI, WiFi scanning,
-VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
-Inspired by the ESP32 NAT Router.
+ Turn any Linux SBC with WiFi into a travel NAT router.
+ Features: AP+STA hybrid mode, web UI, WiFi scanning,
+ VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
+ Inspired by the ESP32 NAT Router.
 
 Package: travel-net
 Version: 0.1.0-1
@@ -47,7 +47,7 @@ SHA256: f7435ac2796d709bcd2066827557ab9a087f7d8ebf3592a46e3e796e8e32a086
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
-Turn any Linux SBC with WiFi into a travel NAT router.
-Features: AP+STA hybrid mode, web UI, WiFi scanning,
-VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
-Inspired by the ESP32 NAT Router.
+ Turn any Linux SBC with WiFi into a travel NAT router.
+ Features: AP+STA hybrid mode, web UI, WiFi scanning,
+ VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
+ Inspired by the ESP32 NAT Router.
