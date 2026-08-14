@@ -197,12 +197,14 @@ thing the home box does for you automatically.
    [Peer]
    # My travel box
    PublicKey = <TRAVEL_BOX_PUBLIC_KEY - see step 5 below>
-   AllowedIPs = 10.0.0.2/32, 192.168.4.0/24
+   AllowedIPs = 10.0.0.2/32
    EOF
    ```
 
    > `10.0.0.1/24` is the home side's address inside the tunnel.
-   > `192.168.4.0/24` is the travel box's own network, so it can answer back.
+   > `10.0.0.2` is the travel box's address inside the tunnel. Only the
+   > tunnel address is listed — the travel box routes its own Wi-Fi network
+   > through the tunnel itself, so the home machine just needs to reach it.
 
 4. Start the server:
 

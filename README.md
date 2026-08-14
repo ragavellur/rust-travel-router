@@ -13,6 +13,7 @@
 - **Factory reset** — one-click reset to defaults
 - **Log viewer** — browse systemd journal from the UI
 - **Debian packaging** — install via `.deb` or `apt`
+- **VPN** — WireGuard or Tailscale, home + travel roles, kill switch (see [VPN setup guide](docs/VPN_GUIDE.md))
 
 ## Architecture
 
@@ -368,6 +369,36 @@ Config file: `/etc/travel-net/config.json`
 | `web_password` | `""` | Web UI password (empty = no auth) |
 | `hostname` | `travel-router` | System hostname |
 
+## VPN (WireGuard & Tailscale)
+
+One travel-net box **stays at home**, another **travels with you**. When you
+connect to the travel box's Wi-Fi, all your traffic goes through a private
+tunnel back to your home box and out to the internet from home — so websites
+see your home address, you can reach your home devices from anywhere, and your
+data stays encrypted on public Wi-Fi.
+
+Pick a VPN type:
+
+| | Tailscale | WireGuard |
+|---|---|---|
+| Easy? | Very easy. | A few more steps. |
+| Works anywhere? | Yes, no router changes. | Yes, but the home router needs UDP port 51820 forwarded. |
+| Cost | Free (Personal plan, up to 100 devices). | Free, no account. |
+| Who runs it? | Tailscale's service coordinates the tunnel. | You. No third party. |
+
+- **Non-technical users:** follow the [VPN setup guide (plain English)](docs/VPN_GUIDE.md) — step by step, with pictures in your head. It covers both a two-travel-net-box setup and a travel box paired with an existing home computer (Raspberry Pi / laptop).
+- **Developers:** see [VPN technical design](docs/VPN_TECHNICAL.md) for the full architecture (config schema, nftables integration, API, pairing flows).
+
+Quick pointers:
+
+- Open the **VPN** page in the web console (or `http://192.168.4.1/vpn`).
+- Pick whether this box is the **home box** (stays at home, always on) or the **travel box** (goes with you), then pick a VPN service.
+- **Install VPN tools** on the VPN page once (needs internet). The services stay off until you save a VPN.
+- WireGuard help is built into the page: the home box can **generate keys**, **add travel devices** and show a ready-to-paste config for each; the travel box can **paste a config file** or fill the fields by hand.
+- Tailscale: create a free account, generate an **auth key**, and paste it in — the page walks you through the rest.
+
+> **VPN config is stored** in the same `/etc/travel-net/config.json` file, under the `vpn` key. Manual edits there are picked up after a `systemctl restart travel-net`.
+
 ## Usage
 
 ### Web UI
@@ -395,6 +426,8 @@ Once running, open these URLs in a browser instead of remembering the IP:
 | Dashboard | `/` | Status, interfaces, clients |
 | WiFi Scan | `/scan` | Scan nearby networks, connect |
 | Configuration | `/config` | Edit AP/network settings |
+| VPN | `/vpn` | Set up WireGuard or Tailscale (home/travel) |
+| Connected Clients | `/clients` | List, block, unblock connected devices |
 | Setup Wizard | `/setup` | Guided initial setup |
 | Logs | `/logs` | System journal viewer |
 | Login | `/login` | Auth page (if password is set) |
@@ -410,6 +443,14 @@ All API endpoints return JSON:
 | `/api/connect` | POST | Connect to a WiFi network (STA) |
 | `/api/config` | GET/PUT | Read/write configuration |
 | `/api/clients` | GET | List connected DHCP clients |
+| `/api/clients/disconnect` | POST | Disconnect a client from the AP |
+| `/api/clients/unblock` | POST | Unblock a previously blocked client |
+| `/api/vpn` | GET | VPN config + live status (tunnel, handshake, kill switch) |
+| `/api/vpn` | POST | Save + apply VPN settings |
+| `/api/vpn/import` | POST | Parse a WireGuard `.conf` file into settings |
+| `/api/vpn/genkeys` | POST | Generate a WireGuard keypair (client or server) |
+| `/api/vpn/peers` | POST | Add/remove a travel device on the home box |
+| `/api/vpn/install` | POST | Install missing VPN tools (WireGuard/Tailscale) |
 | `/api/reboot` | POST | Reboot the device |
 | `/api/reset` | POST | Factory reset |
 | `/api/logs` | GET | Recent system logs |

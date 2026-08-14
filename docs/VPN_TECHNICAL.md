@@ -171,13 +171,20 @@ PostDown = ...
 [Peer]   # one per wg_peers
 # <name>
 PublicKey = <peer.public_key>
-AllowedIPs = <peer.tunnel_ip>/32, <ap_subnet>      # ap_subnet so return traffic routes back
+AllowedIPs = <peer.tunnel_ip>/32      # tunnel IP only — see note below
 ```
 
 - `wg-quick up wg0`.
 - **Open UDP**: nft table `travel-vpn` input accept `udp dport <listen_port>` (all interfaces).
 - **NAT for wg clients**: masquerade `wg0` source subnet → home WAN (in addition to the existing AP→WAN rule).
-- `ap_subnet` is derived from `cfg.ap_ip`/`ap_netmask` via the existing `Config::ap_network()` helper.
+- **Why tunnel-IP-only `AllowedIPs`?** The travel box masquerades its AP
+  traffic out `wg0` (`oifname "wg0" masquerade`), so the home server sees it
+  addressed to the peer's tunnel IP and only needs a route to that /32. Adding
+  the travel box's AP subnet here instead caused a real failure: on a travel-net
+  home box whose own AP uses the same default subnet (`192.168.4.0/24`),
+  `wg-quick up` tried `ip route add 192.168.4.0/24 dev wg0`, hit the already
+  existing route via `wlan1`, and rolled the interface back (verified on
+  NanoPi, T13). The manual guide (`docs/VPN_GUIDE.md` 2B) matches: tunnel IP only.
 
 ### 5.3 Pairing (guided, both sides)
 - **Travel box**: `POST /api/vpn/genkeys {scope:"client"}` → shows public key + "my tunnel IP" + a *copy-ready request block*.
@@ -293,8 +300,8 @@ No static `After=tailscaled.service` in the unit (tailscaled may not exist pre-i
 ## 13. Build & test plan
 
 1. `cargo build --release` (host, catches compile errors) + `cargo-zigbuild` for `aarch64-unknown-linux-gnu`, `armv7-unknown-linux-gnueabihf`, `x86_64-unknown-linux-gnu`.
-2. Deploy to **Cubie A7A** (192.168.200.9): travel role end-to-end — WireGuard via .conf import and via pairing; Tailscale travel (exit node to a home node).
-3. Home role: on a travel-net box with a real uplink (A7A with eth0); and validate the *existing-home-machine* WireGuard instructions against a stock Debian/Raspberry Pi.
+2. Deploy + test on **NanoPi NEO Air** (192.168.200.71): travel role end-to-end — WireGuard via .conf import and via pairing; Tailscale travel (exit node to a home node); kill-switch on/off; home-role server (keygen, peer add, client-conf generation, real handshake via a second wg interface).
+3. Home role: on a travel-net box with a real uplink; and validate the *existing-home-machine* WireGuard instructions against a stock Debian/Raspberry Pi.
 4. Kill-switch test: stop tunnel mid-session, confirm travel clients lose internet; restart, confirm recovery.
 5. Rebuild + republish the three `.deb`s to gh-pages apt repo (per-arch Depends updated), then `apt update && apt upgrade travel-net` on RPi2.
 6. Full web-console walkthrough as a non-technical user (guide-following test).

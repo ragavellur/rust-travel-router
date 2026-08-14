@@ -76,8 +76,11 @@ function renderStatus(st) {
   const tsState = st.tailscale ? st.tailscale.state : '';
   const tsLine = tsState ? escapeHtml(st.tailscale.hostname || '') + ' ' + escapeHtml(st.tailscale.ip || '') + ' — ' + escapeHtml(tsState) : 'not running';
   const wgUp = st.wireguard && st.wireguard.iface_up;
+  const hs = st.wireguard && st.wireguard.handshake_age_secs;
   const wgLine = wgUp
-    ? 'Connected — ' + escapeHtml(st.wireguard.endpoint || '') + ' (' + formatHandshake(st.wireguard.handshake_age_secs) + ')'
+    ? (hs !== null && hs !== undefined
+        ? 'Connected — ' + escapeHtml(st.wireguard.endpoint || '') + ' (' + formatHandshake(hs) + ')'
+        : 'Interface up — waiting for first handshake')
     : 'not connected';
   const inst = st.installed || {};
   tbody.innerHTML =
@@ -85,7 +88,7 @@ function renderStatus(st) {
     statusRow('Role', '<strong>' + (roleNames[st.role] || st.role) + '</strong>') +
     statusRow('WireGuard', connectedDot(wgUp) + ' ' + wgLine) +
     statusRow('Tailscale', connectedDot(st.tailscale && tsState === 'Running') + ' ' + tsLine) +
-    statusRow('VPN tools installed', (inst.wireguard ? 'WireGuard ✓' : 'WireGuard ✗') + ' · ' + (inst.tailscale ? 'Tailscale ✓' : 'Tailscale ✗')) +
+    statusRow('VPN tools installed', ((inst.wg && inst.wg_quick) ? 'WireGuard ✓' : 'WireGuard ✗') + ' · ' + (inst.tailscale ? 'Tailscale ✓' : 'Tailscale ✗')) +
     statusRow('Kill switch', (st.kill_switch ? '<span class="status-value-warn">ON — traffic blocked until the VPN is connected</span>' : '<span class="status-value-ok">off</span>'));
 }
 
@@ -207,7 +210,7 @@ function wgSection(isHome, isTravel, peerRows) {
       </table>
     </div>
     <div id="client-conf-panel" class="hidden" style="margin-top:0.75rem;">
-      <p style="color:#888;font-size:0.85rem;">Copy this whole config into the travel box (VPN page → Paste config file). This is the <strong>only time the private key is shown</strong>.</p>
+      <p style="color:#888;font-size:0.85rem;">Copy this whole config into the travel box (VPN page → Import a config file → Parse). This is the <strong>only time the private key is shown</strong>.</p>
       <textarea id="client_conf" rows="10" style="width:100%;box-sizing:border-box;font-family:monospace;font-size:0.8rem;" readonly></textarea>
       <button class="ok-button" onclick="copyClientConf()" style="margin-top:0.5rem;">Copy to clipboard</button>
     </div>
@@ -292,7 +295,7 @@ ListenPort = 51820
 [Peer]
 # My travel box
 PublicKey = &lt;my travel box public key (generate it below)&gt;
-AllowedIPs = 10.0.0.2/32, 192.168.4.0/24</pre>
+AllowedIPs = 10.0.0.2/32</pre>
         <p>Start it (replace <strong>eth0</strong> with the internet interface):</p>
         <pre style="background:#1a1f2e;padding:0.75rem;border-radius:6px;overflow-x:auto;font-size:0.78rem;">sudo sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward=1" | sudo tee -a /etc/sysctl.conf
@@ -463,7 +466,7 @@ function copyClientConf() {
   ta.select();
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(ta.value).then(function() {
-      showMessage('Config copied. Paste it into the travel box (VPN page → Paste config file).', 'success');
+      showMessage('Config copied. Paste it into the travel box (VPN page → Import a config file → Parse).', 'success');
     });
   } else {
     document.execCommand('copy');
