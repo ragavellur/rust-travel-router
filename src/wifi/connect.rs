@@ -56,7 +56,9 @@ fn connect_wpa_cli(ssid: &str, password: &str, iface: &str) -> Result<String, St
     new_conf.push('\n');
     new_conf.push_str(&String::from_utf8_lossy(&pw_out.stdout));
 
-    fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))?;
+    crate::system::remount::with_writable_rootfs(|| {
+        fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))
+    })?;
 
     let _ = Command::new("wpa_cli")
         .args(["-i", iface, "reconfigure"])
