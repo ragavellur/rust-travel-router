@@ -1,18 +1,44 @@
 #!/bin/bash
+# travel-net-overlay: create writable tmpfs bind-mounts over directories
+# that travel-net and its backends (NM, hostapd, dnsmasq, wpa_supplicant)
+# need to write to at runtime. Rootfs stays ro.
 set -e
 
 overlay_bind() {
     local src="$1"
     local tmpdir="/tmp/overlay-$(echo "$src" | tr '/' '_' | sed 's/^_//')"
 
+    # Skip if already mounted or source doesn't exist
+    mountpoint -q "$src" 2>/dev/null && return 0
+    [ -e "$src" ] || mkdir -p "$src"
+
     mkdir -p "$tmpdir"
-    if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
-        cp -a "$src"/. "$tmpdir/" 2>/dev/null || true
-    fi
+    # Copy existing content to tmpfs (preserves originals on ro base)
+    cp -a "$src"/. "$tmpdir/" 2>/dev/null || true
     mount --bind "$tmpdir" "$src"
-    echo "travel-net-overlay: bound $tmpdir -> $src"
+    echo "travel-net-overlay: $tmpdir -> $src"
 }
 
-overlay_bind "/etc/NetworkManager/system-connections"
+# travel-net config (all devices)
 overlay_bind "/etc/travel-net"
-overlay_bind "/etc/hostapd"
+
+# NetworkManager backend dirs (Cubie, RPi4/5, laptops)
+if command -v nmcli >/dev/null 2>&1 || [ -d /etc/NetworkManager ]; then
+    overlay_bind "/etc/NetworkManager/system-connections"
+fi
+
+# hostapd backend dirs (NanoPi, older RPi)
+if command -v hostapd >/dev/null 2>&1 || [ -d /etc/hostapd ]; then
+    overlay_bind "/etc/hostapd"
+fi
+
+# wpa_supplicant config (used by both backends for STA)
+if [ -d /etc/wpa_supplicant ]; then
+    mkdir -p /etc/wpa_supplicant
+    overlay_bind "/etc/wpa_supplicant"
+fi
+
+# dnsmasq config (hostapd backend)
+if [ -d /etc/dnsmasq.d ]; then
+    overlay_bind "/etc/dnsmasq.d"
+fi
