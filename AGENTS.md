@@ -52,9 +52,11 @@
 │       └── config.json       ← default config
 ├── debian/
 │   ├── control               ← .deb package metadata
-│   ├── postinst              ← post-install script
+│   ├── postinst              ← post-install script (interactive RO setup)
 │   ├── prerm                 ← pre-remove script
-│   └── travel-net.service    ← systemd unit
+│   ├── travel-net.service    ← systemd unit
+│   ├── travel-net-overlay.service ← overlay boot service
+│   └── travel-net-overlay    ← tmpfs bind-mount script
 ├── nftables/
 │   └── travel-net.nft        ← nftables ruleset
 ├── templates/                ← embedded HTML templates
@@ -71,6 +73,7 @@
 │   ├── ap/
 │   │   ├── mod.rs            ← start_ap() backend dispatch
 │   │   ├── interface.rs      ← iw interface create/delete
+│   │   ├── channel.rs        ← shared channel detection
 │   │   ├── hostapd.rs        ← hostapd control
 │   │   ├── networkmanager.rs ← NM hotspot control (backend for AIC8800)
 │   │   └── apply.rs          ← config apply at runtime
@@ -88,7 +91,8 @@
 │   │   ├── pages.rs          ← HTML page routes
 │   │   └── auth.rs           ← Session-based auth
 │   ├── system/
-│   │   └── mod.rs            ← Reboot/shutdown/journald logs
+│   │   ├── mod.rs            ← Reboot/shutdown/journald logs
+│   │   └── remount.rs        ← RO rootfs persist (persist_config, persist_nm_connections)
 │   └── ... (other modules)
 └── target/                   ← build output (gitignored)
     ├── aarch64-unknown-linux-gnu/release/travel-net
@@ -409,6 +413,38 @@ iw dev wlan0 scan | grep -E "SSID|freq|signal"
 - [x] Client disconnect fix: `/var/lib/NetworkManager` as tmpfs for dnsmasq leases
 - [x] DNS fix: static upstream config in dnsmasq-shared.d, `dns=systemd-resolved`, resolv.conf symlink
 - [x] A5E rootfs locked ro in fstab (needs reboot to take effect)
+- [x] WiFi disconnect/forget feature (`/api/wifi-disconnect`, scan.html Forget button)
+- [x] AP channel auto-detect (`ap_channel=0` → detect STA channel)
+- [x] AP-first startup (AP always starts, gets clean channel)
+- [x] OpenWrt-style RO rootfs (tmpfs bind-mounts, interactive install prompt)
+- [x] All-device overlay (NM, hostapd, wpa_supplicant, dnsmasq dirs)
+- [x] Zero compiler warnings
+
+## Read-Only Rootfs (Overlay)
+
+The overlay service (`travel-net-overlay.service`) creates tmpfs bind-mounts over directories that travel-net and its backends write to at runtime. This keeps the rootfs `ro` during normal operation, preventing SD card corruption on sudden power loss.
+
+### Directories overlaid
+- `/etc/travel-net` — travel-net config
+- `/etc/NetworkManager/system-connections` — NM connection profiles
+- `/etc/hostapd` — hostapd config (hostapd backend)
+- `/etc/wpa_supplicant` — wpa_supplicant config
+
+### How it works
+1. At boot, `travel-net-overlay.service` runs before NetworkManager and travel-net
+2. Script bind-mounts tmpfs over each directory, copying existing content
+3. All runtime writes go to tmpfs transparently
+4. When user applies settings (web UI), Rust code persists to ext4:
+   - Unbind tmpfs → remount rootfs rw → copy to ext4 → sync → remount ro → re-bind tmpfs
+5. Rootfs is `ro` except during the brief persist step (fraction of a second)
+
+### Install interaction
+During `apt install travel-net`, the postinst script asks:
+```
+Enable read-only rootfs? [Y/n]
+```
+- **Y** (default): enables overlay service, adds tmpfs fstab entries, sets rootfs `ro` in fstab
+- **N**: disables overlay, rootfs stays writable
 
 ## Hardware IPs Quick Reference
 
