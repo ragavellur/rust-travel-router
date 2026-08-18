@@ -5,8 +5,8 @@ Codename: stable
 Architectures: armhf arm64 amd64
 Components: main
 Description: Travel NAT Router APT repository
-Date: Tue, 18 Aug 2026 13:36:58 +0000
+Date: Tue, 18 Aug 2026 13:42:58 +0000
 SHA256:
- fe324002ff45024b13ad9ae65a719563c75c1a20122b7f4a8708a14b16fd6488 3595 Packages
- 6d4a5ad55ed1b0b995ff547b014e0487233a1373bcfa67c6103df7db3c5edd11 1144 Packages.gz
- 9b526df346e1f422b01c058a4c0f242460e75f9d3357d3352be4519191d29623 1164 Packages.xz
+ e1f6cd3fe3a3d54fb35c913e1d105204b971dcecd65840ee99738edfe8f7a7e3 2027 Packages
+ 031a03e16673e0c9e3938ff0529e722d02e75df2c3bd4a3b681d8f6e376ed295 753 Packages.gz
+ 00396fb8a97ac8cc483d17f4d969e948f20a03dbecf2debe36718069736f31ce 804 Packages.xz
