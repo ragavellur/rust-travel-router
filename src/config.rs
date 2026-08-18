@@ -325,14 +325,11 @@ pub fn load(path: &Path) -> Result<Config, Box<dyn std::error::Error>> {
 }
 
 pub fn save(path: &Path, cfg: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    crate::system::remount::with_writable_rootfs(|| save_inner(path, cfg))
-}
-
-fn save_inner(path: &Path, cfg: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let tmp = path.with_extension("json.tmp");
     let data = serde_json::to_string_pretty(cfg)?;
     fs::write(&tmp, &data)?;
     fs::rename(&tmp, path)?;
+    crate::system::remount::persist_config();
     Ok(())
 }
 

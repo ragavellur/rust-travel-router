@@ -1,15 +1,14 @@
 [Unit]
 Description=travel-net NAT Router
-After=network.target network-online.target
+After=network.target network-online.target travel-net-overlay.service
 Wants=network-online.target
+Requires=travel-net-overlay.service
 
 [Service]
 Type=simple
-ExecStartPre=/bin/mount -o remount,rw /
 ExecStart=/usr/sbin/travel-net
 Restart=always
 RestartSec=5
-RestartPreventExitStatus=SIGTERM
 User=root
 
 [Install]

@@ -1,0 +1,12 @@
+[Unit]
+Description=Create writable tmpfs overlays for runtime state
+DefaultDependencies=no
+Before=NetworkManager.service travel-net.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/travel-net-overlay
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

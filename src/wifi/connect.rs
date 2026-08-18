@@ -19,26 +19,25 @@ pub fn disconnect(backend: &Backend, iface: &str, ssid: Option<&str>) -> Result<
 }
 
 fn connect_nmcli(ssid: &str, password: &str, iface: &str) -> Result<String, String> {
-    crate::system::remount::with_writable_rootfs(|| {
-        let mut cmd = Command::new("nmcli");
-        cmd.args(["device", "wifi", "connect", ssid]);
-        if !password.is_empty() {
-            cmd.args(["password", password]);
-        }
-        cmd.args(["ifname", iface]);
+    let mut cmd = Command::new("nmcli");
+    cmd.args(["device", "wifi", "connect", ssid]);
+    if !password.is_empty() {
+        cmd.args(["password", password]);
+    }
+    cmd.args(["ifname", iface]);
 
-        let out = cmd.output().map_err(|e| format!("nmcli error: {e}"))?;
-        if out.status.success() {
-            Ok(format!("Connected to {ssid}"))
+    let out = cmd.output().map_err(|e| format!("nmcli error: {e}"))?;
+    if out.status.success() {
+        crate::system::remount::persist_nm_connections();
+        Ok(format!("Connected to {ssid}"))
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr).to_string();
+        Err(if err.contains("secrets") || err.contains("invalid") {
+            "Invalid password".into()
         } else {
-            let err = String::from_utf8_lossy(&out.stderr).to_string();
-            Err(if err.contains("secrets") || err.contains("invalid") {
-                "Invalid password".into()
-            } else {
-                err
-            })
-        }
-    })
+            err
+        })
+    }
 }
 
 fn connect_wpa_cli(ssid: &str, password: &str, iface: &str) -> Result<String, String> {
@@ -65,9 +64,8 @@ fn connect_wpa_cli(ssid: &str, password: &str, iface: &str) -> Result<String, St
     new_conf.push('\n');
     new_conf.push_str(&String::from_utf8_lossy(&pw_out.stdout));
 
-    crate::system::remount::with_writable_rootfs(|| {
-        fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))
-    })?;
+    // Write to tmpfs (bind-mounted or direct)
+    fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))?;
 
     let _ = Command::new("wpa_cli")
         .args(["-i", iface, "reconfigure"])
@@ -94,16 +92,15 @@ fn connect_wpa_cli(ssid: &str, password: &str, iface: &str) -> Result<String, St
 
 fn disconnect_nm(iface: &str, ssid: Option<&str>) -> Result<String, String> {
     if let Some(ssid) = ssid {
-        // Disconnect and forget a specific network
         let out = Command::new("nmcli")
             .args(["connection", "delete", ssid])
             .output()
             .map_err(|e| format!("nmcli error: {e}"))?;
         if out.status.success() {
+            crate::system::remount::persist_nm_connections();
             return Ok(format!("Disconnected and forgot {ssid}"));
         }
         let err = String::from_utf8_lossy(&out.stderr).to_string();
-        // If delete fails (e.g. active), try disconnect first then delete
         if err.contains("active") {
             let _ = Command::new("nmcli")
                 .args(["device", "disconnect", iface])
@@ -114,13 +111,13 @@ fn disconnect_nm(iface: &str, ssid: Option<&str>) -> Result<String, String> {
                 .output()
                 .map_err(|e| format!("nmcli error: {e}"))?;
             if out2.status.success() {
+                crate::system::remount::persist_nm_connections();
                 return Ok(format!("Disconnected and forgot {ssid}"));
             }
             return Err(String::from_utf8_lossy(&out2.stderr).into());
         }
         Err(err)
     } else {
-        // Just disconnect whatever is active on this interface
         let out = Command::new("nmcli")
             .args(["device", "disconnect", iface])
             .output()
@@ -135,7 +132,6 @@ fn disconnect_nm(iface: &str, ssid: Option<&str>) -> Result<String, String> {
 
 fn disconnect_wpa(iface: &str, ssid: Option<&str>) -> Result<String, String> {
     if let Some(ssid) = ssid {
-        // Remove the network block from wpa_supplicant.conf
         let wpa_conf = "/etc/wpa_supplicant/wpa_supplicant.conf";
         let existing = fs::read_to_string(wpa_conf).unwrap_or_default();
         let escaped_ssid = regex::escape(ssid);
@@ -144,9 +140,7 @@ fn disconnect_wpa(iface: &str, ssid: Option<&str>) -> Result<String, String> {
         let cleaned = re.replace_all(&existing, "");
         let new_conf = cleaned.trim().to_string() + "\n";
 
-        crate::system::remount::with_writable_rootfs(|| {
-            fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))
-        })?;
+        fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))?;
 
         let _ = Command::new("wpa_cli")
             .args(["-i", iface, "reconfigure"])

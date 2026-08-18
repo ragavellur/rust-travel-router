@@ -92,7 +92,5 @@ ctrl_interface=/var/run/hostapd
         password = if cfg.ap_password.is_empty() { "travel-net".into() } else { cfg.ap_password.clone() },
     );
 
-    crate::system::remount::with_writable_rootfs(|| {
-        fs::write(HOSTAPD_CONF, &conf).map_err(|e| format!("Write hostapd.conf: {e}"))
-    })
+    fs::write(HOSTAPD_CONF, &conf).map_err(|e| format!("Write hostapd.conf: {e}"))
 }

@@ -35,8 +35,9 @@ case "$1" in
         fi
         systemctl disable tailscaled 2>/dev/null || true
 
-        # Enable and start service
+        # Enable and start services
         systemctl daemon-reload
+        systemctl enable travel-net-overlay.service
         systemctl enable travel-net.service
         systemctl restart travel-net.service || true
 

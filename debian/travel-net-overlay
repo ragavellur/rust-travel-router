@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+overlay_bind() {
+    local src="$1"
+    local tmpdir="/tmp/overlay-$(echo "$src" | tr '/' '_' | sed 's/^_//')"
+
+    mkdir -p "$tmpdir"
+    if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
+        cp -a "$src"/. "$tmpdir/" 2>/dev/null || true
+    fi
+    mount --bind "$tmpdir" "$src"
+    echo "travel-net-overlay: bound $tmpdir -> $src"
+}
+
+overlay_bind "/etc/NetworkManager/system-connections"
+overlay_bind "/etc/travel-net"
+overlay_bind "/etc/hostapd"
