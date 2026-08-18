@@ -5,9 +5,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+ExecStartPre=/bin/mount -o remount,rw /
 ExecStart=/usr/sbin/travel-net
 Restart=always
 RestartSec=5
+RestartPreventExitStatus=SIGTERM
 User=root
 
 [Install]

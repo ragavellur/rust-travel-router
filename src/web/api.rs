@@ -143,6 +143,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/status", get(api_status))
         .route("/api/scan", get(api_scan))
         .route("/api/connect", post(api_connect))
+        .route("/api/wifi-disconnect", post(api_wifi_disconnect))
         .route("/api/config", get(api_config_get).post(api_config_post))
         .route("/api/clients", get(api_clients))
         .route("/api/reboot", post(api_reboot))
@@ -225,6 +226,43 @@ async fn api_connect(
                 let mut cfg = state.config.write().await;
                 cfg.sta_ssid = req.ssid.clone();
                 cfg.sta_password = req.password.unwrap_or_default();
+                let path = std::path::Path::new("/etc/travel-net/config.json");
+                config::save(path, &cfg).ok();
+            }
+            Ok(Json(ConnectResponse { success: true, message: msg }))
+        }
+        Err(e) => Err((
+            StatusCode::BAD_REQUEST,
+            Json(ConnectResponse { success: false, message: e }),
+        )),
+    }
+}
+
+#[derive(Deserialize)]
+struct WifiDisconnectRequest {
+    ssid: Option<String>,
+}
+
+async fn api_wifi_disconnect(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<WifiDisconnectRequest>,
+) -> Result<Json<ConnectResponse>, (StatusCode, Json<ConnectResponse>)> {
+    if !is_authed(&state, &headers).await {
+        return Err((StatusCode::UNAUTHORIZED, Json(ConnectResponse { success: false, message: "Unauthorized".into() })));
+    }
+    let cfg = state.config.read().await;
+    let backend = wifi::detect_backend(&cfg.wifi_backend);
+    let iface = cfg.sta_interface.clone();
+    let ssid = req.ssid.as_deref();
+
+    match connect::disconnect(&backend, &iface, ssid) {
+        Ok(msg) => {
+            if ssid.is_some() {
+                drop(cfg);
+                let mut cfg = state.config.write().await;
+                cfg.sta_ssid.clear();
+                cfg.sta_password.clear();
                 let path = std::path::Path::new("/etc/travel-net/config.json");
                 config::save(path, &cfg).ok();
             }

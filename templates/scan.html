@@ -62,6 +62,19 @@ tr.network-removed {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.disconnect-btn {
+  background: linear-gradient(135deg, #f44336, #c62828);
+  border: none;
+  color: #fff;
+  padding: 0.25rem 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.disconnect-btn:hover {
+  opacity: 0.85;
+}
 </style>
 </head>
 <body>
@@ -287,7 +300,7 @@ function applyDiff(tbody, nets, connectedSsid) {
       const actionTd = existingRow.querySelectorAll('td')[4];
       if (actionTd) {
         if (net.ssid === connectedSsid) {
-          actionTd.innerHTML = '<span class="connected-badge">Connected</span>';
+          actionTd.innerHTML = '<span class="connected-badge">Connected</span> <button class="disconnect-btn" onclick="doDisconnect(\'' + escapeAttr(net.ssid) + '\')">Forget</button>';
         } else if (!actionTd.querySelector('button')) {
           actionTd.innerHTML = '<button class="red-button" onclick="selectNetwork(\'' + escapeAttr(net.ssid) + '\',\'' + escapeAttr(net.security || '') + '\')">Connect</button>';
         }
@@ -317,7 +330,7 @@ function applyDiff(tbody, nets, connectedSsid) {
       const secCell = '<td>' + escapeHtml(net.security || 'Open') + ' ' + lock + '</td>';
       const actionCell = '<td>' +
         (net.ssid === connectedSsid
-          ? '<span class="connected-badge">Connected</span>'
+          ? '<span class="connected-badge">Connected</span> <button class="disconnect-btn" onclick="doDisconnect(\'' + escapeAttr(net.ssid) + '\')">Forget</button>'
           : '<button class="red-button" onclick="selectNetwork(\'' + escapeAttr(net.ssid) + '\',\'' + escapeAttr(net.security || '') + '\')">Connect</button>'
         ) + '</td>';
       tr.innerHTML = ssidCell + signalCell + chCell + secCell + actionCell;
@@ -380,6 +393,25 @@ async function doConnect() {
   btn.disabled = false;
   btn.textContent = 'Connect';
   connecting = false;
+}
+
+async function doDisconnect(ssid) {
+  if (!confirm('Disconnect and forget "' + ssid + '"?')) return;
+  try {
+    const r = await fetch('/api/wifi-disconnect', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ssid: ssid}),
+    });
+    const data = await r.json();
+    if (data.success) {
+      setTimeout(backgroundScan, 1500);
+    } else {
+      alert(data.message || 'Disconnect failed.');
+    }
+  } catch {
+    alert('Disconnect error.');
+  }
 }
 
 // Initial load and start polling
