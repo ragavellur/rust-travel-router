@@ -63,6 +63,7 @@ pub async fn apply_ruleset(cfg: &Config) -> Result<(), String> {
     }
 }
 
+#[allow(dead_code)]
 pub async fn flush_ruleset() -> Result<(), String> {
     Command::new("nft")
         .args(["flush", "ruleset"])

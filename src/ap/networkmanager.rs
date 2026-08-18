@@ -140,6 +140,7 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn stop_nm_ap() {
     let _ = Command::new("nmcli")
         .args(["connection", "down", NM_CONNECTION_NAME])

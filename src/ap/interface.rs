@@ -60,6 +60,7 @@ pub async fn create_ap_interface(cfg: &Config) -> Result<(), String> {
     }
 }
 
+#[allow(dead_code)]
 pub async fn delete_ap_interface(cfg: &Config) -> Result<(), String> {
     Command::new("iw")
         .args(["dev", &cfg.ap_interface, "del"])

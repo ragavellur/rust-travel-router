@@ -604,7 +604,7 @@ pub fn import_conf(text: &str) -> Result<crate::config::VpnConfig, String> {
     let mut in_interface = false;
     let mut in_peer = false;
     let mut address_seen = false;
-    let mut required = true;
+    let required = true;
 
     for raw in text.lines() {
         let line = raw.split('#').next().unwrap_or("").trim();

@@ -1,5 +1,6 @@
 use std::process::Command;
 
+#[allow(dead_code)]
 const OVERLAY_DIRS: &[&str] = &[
     "/etc/travel-net",
     "/etc/NetworkManager/system-connections",
@@ -90,6 +91,7 @@ pub fn persist_nm_connections() {
     }
 }
 
+#[allow(dead_code)]
 pub fn persist_all() {
     for dir in OVERLAY_DIRS {
         if let Err(e) = persist_dir(dir) {

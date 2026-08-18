@@ -18,6 +18,7 @@ pub fn set_password(pass: &str) {
     PASSWORD_PROTECTED.store(true, Ordering::SeqCst);
 }
 
+#[allow(dead_code)]
 pub fn is_password_set() -> bool {
     PASSWORD_PROTECTED.load(Ordering::SeqCst)
 }
@@ -53,6 +54,7 @@ pub fn validate_session(token: &str) -> bool {
     })
 }
 
+#[allow(dead_code)]
 pub fn clear_session(token: &str) {
     SESSIONS.with(|s| {
         s.lock().unwrap().remove(token);

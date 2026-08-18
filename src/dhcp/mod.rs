@@ -34,6 +34,7 @@ pub async fn stop_dnsmasq() {
     let _ = Command::new("pkill").args(["-x", "dnsmasq"]).output();
 }
 
+#[allow(dead_code)]
 pub fn is_running() -> bool {
     Command::new("pgrep").args(["-x", "dnsmasq"]).output()
         .map(|o| o.status.success())
