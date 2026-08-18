@@ -130,7 +130,7 @@ pub struct WgPeer {
 fn default_ap_ssid() -> String { "RagaNeoAir".into() }
 fn default_ap_ip() -> String { "192.168.4.1".into() }
 fn default_ap_netmask() -> String { "255.255.255.0".into() }
-fn default_ap_channel() -> u8 { 4 }
+fn default_ap_channel() -> u8 { 0 }
 fn default_ap_band() -> String { "bg".into() }
 fn default_dhcp_start() -> String { "192.168.4.10".into() }
 fn default_dhcp_end() -> String { "192.168.4.250".into() }
@@ -234,8 +234,8 @@ impl Config {
                 errors.push("5GHz channel must be 36-64, 100-144, 149-165, or 0 (auto)".into());
             }
         } else if self.ap_band == "bg" {
-            if self.ap_channel < 1 || self.ap_channel > 13 {
-                errors.push("2.4GHz channel must be 1-13".into());
+            if self.ap_channel != 0 && (self.ap_channel < 1 || self.ap_channel > 13) {
+                errors.push("2.4GHz channel must be 1-13 or 0 (auto)".into());
             }
         }
         // "auto" band: skip channel check (driver auto-selects)
@@ -408,5 +408,41 @@ mod tests {
         assert_eq!(back.vpn.backend, "wireguard");
         assert_eq!(back.vpn.wg_peers[0].name, "travel");
         assert_eq!(back.vpn.wg_peers[0].tunnel_ip, "10.0.0.2");
+    }
+
+    #[test]
+    fn ap_channel_zero_is_valid_for_bg() {
+        let cfg = Config { ap_channel: 0, ap_band: "bg".into(), ..Default::default() };
+        assert!(cfg.validate().is_ok(), "ap_channel=0 should be valid for bg band");
+    }
+
+    #[test]
+    fn ap_channel_zero_is_valid_for_a() {
+        let cfg = Config { ap_channel: 0, ap_band: "a".into(), ..Default::default() };
+        assert!(cfg.validate().is_ok(), "ap_channel=0 should be valid for a band");
+    }
+
+    #[test]
+    fn ap_channel_default_is_zero() {
+        let cfg = Config::default();
+        assert_eq!(cfg.ap_channel, 0);
+    }
+
+    #[test]
+    fn freq_to_channel_2ghz() {
+        assert_eq!(crate::ap::channel::freq_to_channel_and_band(2412), Some((1, "bg".into())));
+        assert_eq!(crate::ap::channel::freq_to_channel_and_band(2437), Some((6, "bg".into())));
+        assert_eq!(crate::ap::channel::freq_to_channel_and_band(2462), Some((11, "bg".into())));
+    }
+
+    #[test]
+    fn freq_to_channel_5ghz() {
+        assert_eq!(crate::ap::channel::freq_to_channel_and_band(5180), Some((36, "a".into())));
+        assert_eq!(crate::ap::channel::freq_to_channel_and_band(5745), Some((149, "a".into())));
+    }
+
+    #[test]
+    fn freq_to_channel_unknown() {
+        assert_eq!(crate::ap::channel::freq_to_channel_and_band(900), None);
     }
 }

@@ -75,5 +75,8 @@ fn connect_wpa_cli(ssid: &str, password: &str, iface: &str) -> Result<String, St
             return Ok(format!("Connected to {ssid}"));
         }
     }
-    Err("Connection timeout (check password)".into())
+    // Timeout — stop wpa_supplicant so it doesn't hog the radio forever
+    tracing::warn!("STA connection to {ssid} timed out, stopping wpa_supplicant");
+    let _ = Command::new("wpa_cli").args(["-i", iface, "terminate"]).output();
+    Err("Connection timeout (check password or SSID availability)".into())
 }

@@ -46,24 +46,7 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         .output()
         .map_err(|e| format!("ip link set up failed: {e}"))?;
 
-    // Auto-detect STA channel so AP matches the same frequency (single-radio phy constraint)
-    let (channel, band) = if cfg.sta_interface.is_empty() || cfg.ap_channel != 0 {
-        (cfg.ap_channel, cfg.ap_band.clone())
-    } else {
-        let mut detected = None;
-        for attempt in 1..=10 {
-            if let Some((ch, b)) = detect_sta_channel(&cfg.sta_interface) {
-                tracing::info!("Auto-detected STA channel {ch} ({b}) from {} (attempt {attempt})", cfg.sta_interface);
-                detected = Some((ch, b));
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        }
-        detected.unwrap_or_else(|| {
-            tracing::warn!("Could not detect STA channel, letting NM auto-select");
-            (cfg.ap_channel, cfg.ap_band.clone())
-        })
-    };
+    let (channel, band) = crate::ap::channel::resolve_ap_channel(cfg.ap_channel, &cfg.ap_band, &cfg.sta_interface);
 
     // Map ap_band to NM wifi.band
     // When channel is 0 (auto), always pass None for band to let NM decide
@@ -175,47 +158,4 @@ pub fn is_running() -> bool {
             out.lines().any(|l| l.trim() == NM_CONNECTION_NAME)
         })
         .unwrap_or(false)
-}
-
-fn detect_sta_channel(sta_iface: &str) -> Option<(u8, String)> {
-    let output = Command::new("iw")
-        .args(["dev", sta_iface, "link"])
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        let line = line.trim();
-        if let Some(freq_str) = line.strip_prefix("freq:") {
-            let freq: u32 = freq_str.trim().parse().ok()?;
-            return freq_to_channel_and_band(freq);
-        }
-    }
-    None
-}
-
-fn freq_to_channel_and_band(freq: u32) -> Option<(u8, String)> {
-    match freq {
-        2412..=2472 => {
-            let ch = ((freq - 2412) / 5 + 1) as u8;
-            Some((ch, "bg".into()))
-        }
-        2484 => Some((14, "bg".into())),
-        5180..=5825 => {
-            let ch = match freq {
-                5180 => 36, 5200 => 40, 5220 => 44, 5240 => 48,
-                5260 => 52, 5280 => 56, 5300 => 60, 5320 => 64,
-                5500 => 100, 5520 => 104, 5540 => 108, 5560 => 112,
-                5580 => 116, 5600 => 120, 5620 => 124, 5640 => 128,
-                5660 => 132, 5680 => 136, 5700 => 140,
-                5745 => 149, 5765 => 153, 5785 => 157, 5805 => 161,
-                5825 => 165,
-                _ => return None,
-            };
-            Some((ch, "a".into()))
-        }
-        _ => None,
-    }
 }

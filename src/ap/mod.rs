@@ -1,3 +1,4 @@
+pub mod channel;
 pub mod hostapd;
 pub mod interface;
 pub mod apply;

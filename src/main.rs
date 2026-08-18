@@ -38,7 +38,21 @@ async fn main() {
     tracing::info!("Uplink interface: {uplink}");
     firewall::apply_performance_tuning(&cfg);
 
-    // Auto-connect STA if configured
+    // Start AP FIRST — the AP must always be available, even without upstream.
+    // On brcmfmac (NanoPi), AP and STA share one radio. Starting AP first
+    // ensures it gets a clean channel. STA will follow the AP's channel.
+    if let Err(e) = ap::start_ap(&cfg).await {
+        tracing::error!("Failed to start AP: {e}");
+    }
+    let nm_backend = backend == wifi::Backend::NetworkManager;
+    if !nm_backend {
+        let _ = dhcp::start_dnsmasq(&cfg).await;
+        let _ = firewall::apply_ruleset(&cfg).await;
+    }
+
+    // Auto-connect STA AFTER AP is up. On brcmfmac, wpa_supplicant will
+    // scan on the AP's channel. If upstream is on that channel, it connects.
+    // If not, the AP still works standalone.
     if !cfg.sta_ssid.is_empty() {
         let backend = wifi::detect_backend(&cfg.wifi_backend);
         let sta_iface = cfg.sta_interface.clone();
@@ -50,18 +64,8 @@ async fn main() {
             if let Err(e) = wifi::connect::connect(&backend, &sta_ssid, &sta_password, &sta_iface) {
                 tracing::warn!("STA auto-connect failed: {e}");
             }
-            // Retry power save disable after STA connects
             firewall::apply_performance_tuning(&cfg_for_tuning);
         });
-    }
-
-    if let Err(e) = ap::start_ap(&cfg).await {
-        tracing::error!("Failed to start AP: {e}");
-    }
-    let nm_backend = backend == wifi::Backend::NetworkManager;
-    if !nm_backend {
-        let _ = dhcp::start_dnsmasq(&cfg).await;
-        let _ = firewall::apply_ruleset(&cfg).await;
     }
 
     // Start the saved VPN (Tailscale / WireGuard). Must come after the
