@@ -53,36 +53,17 @@ pub fn is_overlay_active(dir: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn ensure_rw_for_write(path: &std::path::Path) -> Result<bool, String> {
-    if !is_rootfs_readonly() {
-        return Ok(false);
+/// Unmount ALL overlay bind-mounts so rootfs can be remounted.
+/// This is the ONLY reliable way to make `mount -o remount,ro /` succeed.
+/// The overlay service will re-create them at next boot.
+fn unmount_all_overlays() {
+    // resolv.conf has its own special bind-mount
+    if is_overlay_active("/etc/resolv.conf") {
+        let _ = Command::new("umount").arg("/etc/resolv.conf").output();
     }
-    let dir = path.parent().unwrap_or(std::path::Path::new("/"));
-    if is_overlay_active(dir.to_str().unwrap_or("")) {
-        return Ok(false);
-    }
-    let output = Command::new("mount")
-        .args(["-o", "remount,rw", "/"])
-        .output()
-        .map_err(|e| format!("mount remount,rw: {e}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!("Failed to remount rootfs rw for save: {stderr}"));
-    }
-    Ok(true)
-}
-
-fn restore_ro(did_remount: bool) {
-    if !did_remount {
-        return;
-    }
-    let _ = Command::new("sync").output();
-    let output = Command::new("mount")
-        .args(["-o", "remount,ro", "/"])
-        .output();
-    if let Ok(out) = output {
-        if !out.status.success() {
-            tracing::warn!("Failed to restore rootfs to ro after save");
+    for dir in OVERLAY_DIRS {
+        if is_overlay_active(dir) {
+            let _ = Command::new("umount").arg(dir).output();
         }
     }
 }
@@ -102,15 +83,42 @@ pub fn is_file_on_overlay(path: &std::path::Path) -> bool {
     false
 }
 
+fn remount_rw() -> Result<(), String> {
+    unmount_all_overlays();
+    let output = Command::new("mount")
+        .args(["-o", "remount,rw", "/"])
+        .output()
+        .map_err(|e| format!("mount remount,rw: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("mount remount,rw / failed: {stderr}"));
+    }
+    Ok(())
+}
+
+fn remount_ro() -> Result<(), String> {
+    unmount_all_overlays();
+    let _ = Command::new("sync").output();
+    let output = Command::new("mount")
+        .args(["-o", "remount,ro", "/"])
+        .output()
+        .map_err(|e| format!("mount remount,ro: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("mount remount,ro / failed: {stderr}"));
+    }
+    Ok(())
+}
+
 pub fn safe_write(path: &std::path::Path, content: &str) -> Result<(), String> {
     if is_file_on_overlay(path) {
         std::fs::write(path, content).map_err(|e| format!("Write {}: {e}", path.display()))?;
         return Ok(());
     }
-    let did_rw = ensure_rw_for_write(path)?;
+    remount_rw()?;
     let result = std::fs::write(path, content)
         .map_err(|e| format!("Write {}: {e}", path.display()));
-    restore_ro(did_rw);
+    let _ = remount_ro();
     result
 }
 
@@ -119,10 +127,10 @@ pub fn safe_write_bytes(path: &std::path::Path, content: &[u8]) -> Result<(), St
         std::fs::write(path, content).map_err(|e| format!("Write {}: {e}", path.display()))?;
         return Ok(());
     }
-    let did_rw = ensure_rw_for_write(path)?;
+    remount_rw()?;
     let result = std::fs::write(path, content)
         .map_err(|e| format!("Write {}: {e}", path.display()));
-    restore_ro(did_rw);
+    let _ = remount_ro();
     result
 }
 
@@ -134,10 +142,10 @@ pub fn safe_create_dir_all(path: &std::path::Path) -> Result<(), String> {
         std::fs::create_dir_all(path).map_err(|e| format!("Mkdir {}: {e}", path.display()))?;
         return Ok(());
     }
-    let did_rw = ensure_rw_for_write(path)?;
+    remount_rw()?;
     let result = std::fs::create_dir_all(path)
         .map_err(|e| format!("Mkdir {}: {e}", path.display()));
-    restore_ro(did_rw);
+    let _ = remount_ro();
     result
 }
 
@@ -148,10 +156,10 @@ pub fn safe_set_permissions(path: &std::path::Path, mode: u32) -> Result<(), Str
             .map_err(|e| format!("Chmod {}: {e}", path.display()))?;
         return Ok(());
     }
-    let did_rw = ensure_rw_for_write(path)?;
+    remount_rw()?;
     let result = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
         .map_err(|e| format!("Chmod {}: {e}", path.display()));
-    restore_ro(did_rw);
+    let _ = remount_ro();
     result
 }
 
@@ -168,7 +176,7 @@ pub fn save_config(path: &std::path::Path, cfg: &crate::config::Config) -> Resul
         return Ok(());
     }
 
-    let did_rw = ensure_rw_for_write(path)?;
+    remount_rw()?;
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
         let tmp = path.with_extension("json.tmp");
         let data = serde_json::to_string_pretty(cfg)?;
@@ -180,7 +188,7 @@ pub fn save_config(path: &std::path::Path, cfg: &crate::config::Config) -> Resul
     if result.is_ok() {
         persist_config();
     }
-    restore_ro(did_rw);
+    let _ = remount_ro();
     result
 }
 
@@ -200,22 +208,13 @@ pub fn make_writable() -> Result<(), String> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let did_rw = ensure_rw_for_write(std::path::Path::new("/etc/fstab"))?;
+    remount_rw()?;
     let write_result = std::fs::write("/etc/fstab", &new_fstab)
         .map_err(|e| format!("Write fstab: {e}"));
 
     if write_result.is_err() {
-        restore_ro(did_rw);
+        let _ = remount_ro();
         return write_result;
-    }
-
-    let output = Command::new("mount")
-        .args(["-o", "remount,rw", "/"])
-        .output()
-        .map_err(|e| format!("mount remount,rw: {e}"))?;
-    if !output.status.success() {
-        restore_ro(did_rw);
-        return Err("Failed to remount rootfs rw".into());
     }
 
     Ok(())
@@ -241,40 +240,15 @@ pub fn make_readonly() -> Result<(), String> {
         .collect::<Vec<_>>()
         .join("\n");
 
-    let did_rw = ensure_rw_for_write(std::path::Path::new("/etc/fstab"))?;
+    remount_rw()?;
     let write_result = std::fs::write("/etc/fstab", &new_fstab)
         .map_err(|e| format!("Write fstab: {e}"));
-
-    if write_result.is_err() {
-        restore_ro(did_rw);
-        return write_result;
+    if let Err(e) = write_result {
+        let _ = remount_ro();
+        return Err(e);
     }
 
-    kill_blocking_processes();
-
-    for attempt in 0..3 {
-        let output = Command::new("mount")
-            .args(["-o", "remount,ro", "/"])
-            .output()
-            .map_err(|e| format!("mount remount,ro: {e}"))?;
-        if output.status.success() {
-            break;
-        }
-        if attempt < 2 {
-            tracing::warn!("mount -o remount,ro failed (attempt {}), retrying after kill", attempt + 1);
-            kill_blocking_processes();
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        } else {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let fuser_out = Command::new("fuser").args(["-vm", "/"]).output()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                .unwrap_or_default();
-            tracing::error!("mount -o remount,ro / failed: stderr={stderr} stdout={stdout} fuser={fuser_out}");
-            restore_ro(did_rw);
-            return Err(format!("mount -o remount,ro / failed: {stderr}"));
-        }
-    }
+    remount_ro()?;
 
     let _ = Command::new("systemctl")
         .args(["enable", "travel-net-overlay.service"])
@@ -284,52 +258,6 @@ pub fn make_readonly() -> Result<(), String> {
     persist_nm_connections();
 
     Ok(())
-}
-
-fn kill_blocking_processes() {
-    let fuser_out = Command::new("fuser").args(["-vm", "/"]).output();
-    if let Ok(out) = fuser_out {
-        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
-        let pids: Vec<&str> = stdout
-            .lines()
-            .filter_map(|line| {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if let Some(pid_str) = parts.last() {
-                    let pid = pid_str.trim_end_matches(':');
-                    if pid.chars().all(|c| c.is_ascii_digit()) && !pid.is_empty() {
-                        return Some(pid);
-                    }
-                }
-                None
-            })
-            .collect();
-
-        let my_pid = std::process::id().to_string();
-        let targets: Vec<&str> = pids.iter().filter(|p| **p != my_pid.as_str()).copied().collect();
-
-        if targets.is_empty() {
-            return;
-        }
-
-        tracing::info!("Killing {} processes blocking rootfs remount: {}", targets.len(), targets.join(", "));
-
-        let _ = Command::new("kill")
-            .args(targets.iter().flat_map(|p| ["-TERM", p]).collect::<Vec<_>>())
-            .output();
-
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
-        let still_alive: Vec<String> = targets.iter().filter(|p| {
-            std::path::Path::new(&format!("/proc/{}", p)).exists()
-        }).map(|p| p.to_string()).collect();
-
-        if !still_alive.is_empty() {
-            let _ = Command::new("kill")
-                .args(still_alive.iter().flat_map(|p| ["-9", p.as_str()]).collect::<Vec<_>>())
-                .output();
-            std::thread::sleep(std::time::Duration::from_secs(1));
-        }
-    }
 }
 
 fn persist_dir(src: &str) -> Result<(), String> {
@@ -344,14 +272,7 @@ fn persist_dir(src: &str) -> Result<(), String> {
         return Err(format!("Failed to unbind {src}"));
     }
 
-    let rw = Command::new("mount")
-        .args(["-o", "remount,rw", "/"])
-        .output()
-        .map_err(|e| format!("remount rw: {e}"))?;
-    if !rw.status.success() {
-        let _ = Command::new("mount").args(["--bind", &tmpdir, src]).output();
-        return Err("Failed to remount rootfs rw".into());
-    }
+    remount_rw()?;
 
     let cp = Command::new("cp")
         .args(["-a", &format!("{tmpdir}/."), src])
@@ -362,20 +283,11 @@ fn persist_dir(src: &str) -> Result<(), String> {
         tracing::warn!("persist cp error for {src}: {err}");
     }
 
-    let _ = Command::new("sync").output();
+    let _ = remount_ro();
 
-    let ro = Command::new("mount")
-        .args(["-o", "remount,ro", "/"])
-        .output()
-        .map_err(|e| format!("remount ro: {e}"))?;
-    if !ro.status.success() {
-        tracing::warn!("Failed to remount rootfs ro for {src}");
-    }
-
-    Command::new("mount")
+    let _ = Command::new("mount")
         .args(["--bind", &tmpdir, src])
-        .output()
-        .map_err(|e| format!("rebind: {e}"))?;
+        .output();
 
     tracing::info!("Persisted {src} to disk");
     Ok(())
