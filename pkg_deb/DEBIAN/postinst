@@ -93,6 +93,9 @@ with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=2)
 
 case "$1" in
     configure)
+        # Clean corrupted apt cache files (device-specific issue)
+        find /var/lib/apt/lists/ -name '*Packages*' -size 0 -delete 2>/dev/null || true
+
         mkdir -p /etc/travel-net
 
         if [ ! -f /etc/travel-net/config.json ]; then
