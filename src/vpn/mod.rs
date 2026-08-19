@@ -404,6 +404,7 @@ fn ts_codename() -> String {
 
 pub fn install() -> Result<Vec<String>, String> {
     let mut logs = Vec::new();
+    let _ = run("sh", &["-c", "rm -f /var/lib/apt/lists/*Packages*"]);
     let wg = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "wireguard-tools"]);
     logs.push(format!(
         "wireguard-tools: {}",
@@ -424,6 +425,7 @@ pub fn install() -> Result<Vec<String>, String> {
         "curl -fsSL https://pkgs.tailscale.com/stable/{os}/{codename}.tailscale-keyring.list -o /etc/apt/sources.list.d/tailscale.list"
     )]);
     let _ = run("chmod", &["0644", "/etc/apt/sources.list.d/tailscale.list"]);
+    let _ = run("sh", &["-c", "rm -f /var/lib/apt/lists/*Packages*"]);
     let up = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "update"]);
     if up.is_err() {
         return Err(format!("apt-get update failed: {}", up.unwrap_err()));
