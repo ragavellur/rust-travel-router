@@ -96,6 +96,15 @@ case "$1" in
         # Clean corrupted apt cache files (device-specific issue)
         find /var/lib/apt/lists/ -name '*Packages*' -size 0 -delete 2>/dev/null || true
 
+        # Fix corrupted dpkg status file
+        if ! dpkg --audit 2>/dev/null; then
+            echo "travel-net: fixing corrupted dpkg status file..."
+            if [ -f /var/lib/dpkg/status-old ]; then
+                cp /var/lib/dpkg/status-old /var/lib/dpkg/status
+            fi
+            dpkg --configure -a 2>/dev/null || true
+        fi
+
         mkdir -p /etc/travel-net
 
         if [ ! -f /etc/travel-net/config.json ]; then
