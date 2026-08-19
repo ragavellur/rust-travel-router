@@ -471,7 +471,7 @@ pub fn tailscale_up(cfg: &Config) -> Result<(), String> {
         *LAST_VPN_ERROR.lock().unwrap() = "tailscaled may not be fully ready yet".into();
     }
 
-    let mut args: Vec<String> = vec!["up".into()];
+    let mut args: Vec<String> = vec!["up".into(), "--reset".into()];
     if !cfg.vpn.ts_auth_key.is_empty() {
         args.push(format!("--authkey={}", cfg.vpn.ts_auth_key));
     }
