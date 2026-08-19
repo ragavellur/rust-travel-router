@@ -4,8 +4,19 @@ use std::process::Command;
 const OVERLAY_DIRS: &[&str] = &[
     "/etc/travel-net",
     "/etc/NetworkManager/system-connections",
+    "/etc/NetworkManager/dnsmasq-shared.d",
     "/etc/hostapd",
     "/etc/wpa_supplicant",
+    "/etc/dnsmasq.d",
+    "/var/lib/dpkg",
+    "/var/cache/apt",
+    "/var/lib/apt",
+    "/var/lib/NetworkManager",
+    "/var/lib/systemd",
+    "/var/log",
+    "/var/tmp",
+    "/etc/apt/sources.list.d",
+    "/usr/share/keyrings",
 ];
 
 fn tmpdir_for(path: &str) -> String {
@@ -15,10 +26,91 @@ fn tmpdir_for(path: &str) -> String {
     )
 }
 
+pub fn is_rootfs_readonly() -> bool {
+    Command::new("mountpoint")
+        .args(["-q", "/"])
+        .output()
+        .map(|o| !o.status.success())
+        .unwrap_or_else(|_| {
+            Command::new("awk")
+                .args(["$", "/ \\//{print $6; exit}", "/etc/fstab"])
+                .output()
+                .map(|o| {
+                    let val = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    val.contains("ro") && !val.contains("rw")
+                })
+                .unwrap_or(false)
+        })
+}
+
+pub fn make_writable() -> Result<(), String> {
+    // Update fstab: replace ro with rw for rootfs
+    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
+    let new_fstab = fstab
+        .lines()
+        .map(|line| {
+            if (line.starts_with("UUID=") || line.starts_with("/dev/"))
+                && line.contains(" / ext4 ")
+            {
+                line.replace("ro,", "").replace(",ro,", ",").replace(",ro ", " ").replace(" ro,", " ,")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write("/etc/fstab", &new_fstab).map_err(|e| format!("Write fstab: {e}"))?;
+
+    // Remount rootfs rw
+    let output = Command::new("mount")
+        .args(["-o", "remount,rw", "/"])
+        .output()
+        .map_err(|e| format!("mount remount,rw: {e}"))?;
+    if !output.status.success() {
+        return Err("Failed to remount rootfs rw".into());
+    }
+
+    Ok(())
+}
+
+pub fn make_readonly() -> Result<(), String> {
+    // Sync before going ro
+    let _ = Command::new("sync").output();
+
+    // Update fstab: add ro for rootfs
+    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
+    let new_fstab = fstab
+        .lines()
+        .map(|line| {
+            if (line.starts_with("UUID=") || line.starts_with("/dev/"))
+                && line.contains(" / ext4 ")
+                && !line.contains("ro")
+            {
+                line.replacen("defaults", "ro,defaults", 1)
+                    .replacen("errors=remount-ro", "ro,errors=remount-ro", 1)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write("/etc/fstab", &new_fstab).map_err(|e| format!("Write fstab: {e}"))?;
+
+    // Remount rootfs ro
+    let output = Command::new("mount")
+        .args(["-o", "remount,ro", "/"])
+        .output()
+        .map_err(|e| format!("mount remount,ro: {e}"))?;
+    if !output.status.success() {
+        return Err("Failed to remount rootfs ro".into());
+    }
+
+    Ok(())
+}
+
 fn persist_dir(src: &str) -> Result<(), String> {
     let tmpdir = tmpdir_for(src);
 
-    // Check if this directory is bind-mounted (overlay active)
     let is_mounted = Command::new("mountpoint")
         .args(["-q", src])
         .output()
@@ -26,28 +118,23 @@ fn persist_dir(src: &str) -> Result<(), String> {
         .unwrap_or(false);
 
     if !is_mounted {
-        // No overlay — write directly to real fs
         return Ok(());
     }
 
-    // Unbind tmpfs (expose real ext4 directory)
     let unbind = Command::new("umount").arg(src).output();
     if !unbind.map(|o| o.status.success()).unwrap_or(false) {
         return Err(format!("Failed to unbind {src}"));
     }
 
-    // Remount rootfs rw
     let rw = Command::new("mount")
         .args(["-o", "remount,rw", "/"])
         .output()
         .map_err(|e| format!("remount rw: {e}"))?;
     if !rw.status.success() {
-        // Put the bind back before returning
         let _ = Command::new("mount").args(["--bind", &tmpdir, src]).output();
         return Err("Failed to remount rootfs rw".into());
     }
 
-    // Copy from tmpfs to real ext4
     let cp = Command::new("cp")
         .args(["-a", &format!("{tmpdir}/."), src])
         .output()
@@ -57,10 +144,8 @@ fn persist_dir(src: &str) -> Result<(), String> {
         tracing::warn!("persist cp error for {src}: {err}");
     }
 
-    // Sync to disk
     let _ = Command::new("sync").output();
 
-    // Remount rootfs ro
     let ro = Command::new("mount")
         .args(["-o", "remount,ro", "/"])
         .output()
@@ -69,7 +154,6 @@ fn persist_dir(src: &str) -> Result<(), String> {
         tracing::warn!("Failed to remount rootfs ro for {src}");
     }
 
-    // Re-bind tmpfs
     Command::new("mount")
         .args(["--bind", &tmpdir, src])
         .output()

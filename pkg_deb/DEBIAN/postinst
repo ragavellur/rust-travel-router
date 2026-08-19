@@ -33,7 +33,6 @@ detect_backend() {
 }
 
 setup_nm_backend() {
-    # NM override for systemd sandboxing (ProtectSystem=true)
     mkdir -p /etc/systemd/system/NetworkManager.service.d
     cat > /etc/systemd/system/NetworkManager.service.d/override.conf << 'EOF'
 [Service]
@@ -42,14 +41,7 @@ ReadWritePaths=/var/lib/NetworkManager
 ReadWritePaths=/etc/NetworkManager/dnsmasq-shared.d
 EOF
 
-    # tmpfs for NM state (add to fstab if not already present)
-    if ! grep -q "tmpfs.*/var/lib/NetworkManager" /etc/fstab 2>/dev/null; then
-        echo "tmpfs /var/lib/NetworkManager tmpfs defaults,noatime,nosuid,nodev 0 0" >> /etc/fstab
-    fi
-
-    # Pre-create hotspot profile (before overlay hides the real dir)
     if ! nmcli connection show travel-net-hotspot >/dev/null 2>&1; then
-        # Try wlan1 first (most SBCs), fall back to any unused phy
         AP_IF=""
         for iface in wlan1 wlan2; do
             if [ -d "/sys/class/net/$iface" ]; then
@@ -64,79 +56,78 @@ EOF
     fi
 }
 
-setup_tmpfs_mounts() {
-    # Add tmpfs mounts for /var/log, /var/tmp if not already present
-    if ! grep -q "tmpfs.*/var/log" /etc/fstab 2>/dev/null; then
-        echo "tmpfs /var/log tmpfs defaults,noatime,nosuid,nodev,mode=0755 0 0" >> /etc/fstab
-    fi
-    if ! grep -q "tmpfs.*/var/tmp" /etc/fstab 2>/dev/null; then
-        echo "tmpfs /var/tmp tmpfs defaults,noatime,nosuid,nodev,mode=1777 0 0" >> /etc/fstab
-    fi
-}
-
-setup_ro_in_fstab() {
-    # Set rootfs to ro in fstab if not already
-    if grep -q "^UUID=.* / ext4 .*rw" /etc/fstab 2>/dev/null; then
-        sed -i 's|^\(UUID=.* / ext4 .*\)rw|\1ro|' /etc/fstab
-        echo "fstab: rootfs set to ro"
-    elif grep -q "^/dev/.* / ext4 .*rw" /etc/fstab 2>/dev/null; then
-        sed -i 's|^\(/dev/.* / ext4 .*\)rw|\1ro|' /etc/fstab
-        echo "fstab: rootfs set to ro"
-    fi
-}
-
 setup_hostapd_backend() {
-    # Ensure config dirs exist
     mkdir -p /etc/hostapd /etc/wpa_supplicant
+}
+
+update_config_rootfs() {
+    # Update rootfs_readonly in config.json
+    CONFIG_FILE="/etc/travel-net/config.json"
+    if [ -f "$CONFIG_FILE" ]; then
+        if [ "$1" = "true" ]; then
+            # Use python if available, else sed
+            if command -v python3 >/dev/null 2>&1; then
+                python3 -c "
+import json
+with open('$CONFIG_FILE') as f: c = json.load(f)
+c['rootfs_readonly'] = True
+with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=2)
+" 2>/dev/null || sed -i 's/"rootfs_readonly": *false/"rootfs_readonly": true/' "$CONFIG_FILE"
+            else
+                sed -i 's/"rootfs_readonly": *false/"rootfs_readonly": true/' "$CONFIG_FILE"
+            fi
+        else
+            if command -v python3 >/dev/null 2>&1; then
+                python3 -c "
+import json
+with open('$CONFIG_FILE') as f: c = json.load(f)
+c['rootfs_readonly'] = False
+with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=2)
+" 2>/dev/null || sed -i 's/"rootfs_readonly": *true/"rootfs_readonly": false/' "$CONFIG_FILE"
+            else
+                sed -i 's/"rootfs_readonly": *true/"rootfs_readonly": false/' "$CONFIG_FILE"
+            fi
+        fi
+    fi
 }
 
 case "$1" in
     configure)
-        # Ensure config directory exists
         mkdir -p /etc/travel-net
 
-        # Seed default config if not present
         if [ ! -f /etc/travel-net/config.json ]; then
             cp /usr/share/travel-net/config.default.json /etc/travel-net/config.json 2>/dev/null || true
         fi
 
-        # Detect backend
         BACKEND=$(detect_backend)
         echo "travel-net: detected backend = $BACKEND"
 
         # Ask about RO rootfs
         ENABLE_RO=0
         if [ -t 0 ] || [ -t 1 ]; then
-            # Interactive terminal available
             setup_ro_rootfs && ENABLE_RO=1
         else
-            # Non-interactive (piped install) — default to yes
             echo "travel-net: non-interactive install, enabling RO rootfs by default"
             ENABLE_RO=1
         fi
 
         if [ "$ENABLE_RO" = "1" ]; then
-            setup_tmpfs_mounts
-
             if [ "$BACKEND" = "networkmanager" ]; then
                 setup_nm_backend
             else
                 setup_hostapd_backend
             fi
 
-            setup_ro_in_fstab
-
-            # Enable overlay service
             systemctl enable travel-net-overlay.service 2>/dev/null || true
+            update_config_rootfs "true"
             echo "travel-net: read-only rootfs enabled (overlay service active)"
         else
-            # Disable overlay service if it was previously enabled
             systemctl disable travel-net-overlay.service 2>/dev/null || true
+            update_config_rootfs "false"
             echo "travel-net: read-only rootfs disabled (rootfs stays writable)"
         fi
 
-        # Install Tailscale (best-effort) but leave it DISABLED until the
-        # user enables a VPN on the web page.
+        # Install Tailscale (best-effort)
         if ! command -v tailscale >/dev/null 2>&1; then
             if command -v curl >/dev/null 2>&1; then
                 TS_OS=debian
@@ -158,7 +149,6 @@ case "$1" in
         fi
         systemctl disable tailscaled 2>/dev/null || true
 
-        # Enable and start travel-net
         systemctl daemon-reload
         systemctl enable travel-net.service
         systemctl restart travel-net.service || true

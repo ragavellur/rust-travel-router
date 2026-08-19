@@ -179,13 +179,25 @@ async function fetchStatus() {
     const r = await fetch('/api/status');
     const s = await r.json();
 
+    // Rootfs status
+    let roHtml = '';
+    try {
+      const rr = await fetch('/api/system/rootfs-status');
+      const rd = await rr.json();
+      if (rd.readonly) {
+        roHtml = statusRow('Filesystem', '<span class="status-dot connected"></span> <strong style="color:#00d9ff;">Read-Only</strong> <a href="/setup" style="color:#888;font-size:0.8rem;">Change</a>');
+      } else {
+        roHtml = statusRow('Filesystem', '<span class="status-dot disconnected"></span> <strong style="color:#ff9800;">Writable</strong> <a href="/setup" style="color:#888;font-size:0.8rem;">Change</a>');
+      }
+    } catch {}
+
     // Status table
     const tbody = document.getElementById('status-rows');
     const apActive = s.ap_active;
     const wifiOk = s.wifi_connected;
     const clients = s.client_count || 0;
     tbody.innerHTML =
-      statusRow('AP SSID', escapeHtml(s.ap_ssid || 'RagaNeoAir')) +
+      statusRow('AP SSID', escapeHtml(s.ap_ssid || 'Travel-Net')) +
       statusRow('AP IP', escapeHtml(s.ap_ip || '--')) +
       statusRow('AP Status', '<span class="status-dot ' + (apActive ? 'ap-active' : 'disconnected') + '"></span>' + (apActive ? 'Active' : 'Inactive')) +
       statusRow('Uplink', connectedDot(wifiOk) + (s.connected_ssid ? ' <strong>' + escapeHtml(s.connected_ssid) + '</strong>' : '')) +
@@ -194,7 +206,8 @@ async function fetchStatus() {
       statusRow('Connected Clients', '<a href="/clients" style="color:#00d9ff;text-decoration:none;"><strong>' + clients + '</strong>' + (clients === 1 ? ' device' : ' devices') + '</a>') +
       statusRow('VPN', vpnLine(s.vpn)) +
       statusRow('Uptime', formatUptime(s.uptime_secs)) +
-      statusRow('Hostname', escapeHtml(s.hostname || 'nanopi-neo-air'));
+      statusRow('Hostname', escapeHtml(s.hostname || 'travel-router')) +
+      roHtml;
 
     // Interface table
     const ifaceTbody = document.getElementById('interface-rows');

@@ -9,37 +9,36 @@
 <style>
 .step { margin-bottom: 1.5rem; }
 .step-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  font-size: 0.85rem;
-  font-weight: 700;
-  margin-right: 0.5rem;
-  vertical-align: middle;
+  color: #fff; font-size: 0.85rem; font-weight: 700;
+  margin-right: 0.5rem; vertical-align: middle;
 }
-.step-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #00d9ff;
-  vertical-align: middle;
-}
+.step-title { font-size: 1rem; font-weight: 600; color: #00d9ff; vertical-align: middle; }
 .welcome { margin-bottom: 1.5rem; }
 .welcome h2 { border-bottom: none; margin-bottom: 0; }
 .welcome p { color: #888; font-size: 0.9rem; }
+.ro-status {
+  padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;
+  text-align: center; font-size: 0.95rem;
+}
+.ro-status.ro { background: rgba(0,217,255,0.1); border: 1px solid rgba(0,217,255,0.3); }
+.ro-status.rw { background: rgba(255,152,0,0.1); border: 1px solid rgba(255,152,0,0.3); }
+.big-button {
+  display: block; width: 100%; padding: 1rem; font-size: 1rem;
+  font-weight: 600; border: none; border-radius: 8px; cursor: pointer;
+  color: #fff; margin-top: 0.5rem;
+}
+.big-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-rw { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); }
+.btn-ro { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); }
+.scan-list { max-height: 200px; overflow-y: auto; margin-top: 0.5rem; }
 .network-item {
   cursor: pointer; padding: 0.5rem; border-radius: 6px;
-  transition: background 0.15s;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  transition: background 0.15s; border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 .network-item:hover { background: rgba(0, 217, 255, 0.05); }
-.network-item.selected { background: rgba(0, 217, 255, 0.1); }
-.network-item.connected { opacity: 0.6; cursor: default; }
-.scan-list { max-height: 200px; overflow-y: auto; margin-top: 0.5rem; }
 </style>
 </head>
 <body>
@@ -51,91 +50,130 @@
     </div>
   </div>
 
-  <div class="welcome">
-    <h2>Welcome!</h2>
-    <p>Follow these steps to configure your NanoPi NEO Air travel router.</p>
+  <!-- Step 0: Filesystem Status -->
+  <div class="step">
+    <div>
+      <span class="step-number">0</span>
+      <span class="step-title">Filesystem Protection</span>
+    </div>
+    <div id="ro-status-box" class="ro-status" style="margin-top:0.5rem;">
+      <span class="spinner"></span> Checking filesystem...
+    </div>
+    <p style="color:#888;font-size:0.8rem;margin-top:0.5rem;">
+      Read-Only mode protects your SD card from corruption during sudden power loss.
+      To configure the router, switch to Writable mode first.
+    </p>
+    <button id="toggle-ro-btn" class="big-button btn-rw" onclick="toggleRootfs()" style="display:none;"></button>
+    <div id="toggle-msg" class="message" style="margin-top:0.5rem;"></div>
   </div>
 
   <!-- Step 1: AP Settings -->
-  <div class="step">
+  <div class="step" id="step-ap">
     <div>
       <span class="step-number">1</span>
       <span class="step-title">Access Point Settings</span>
     </div>
     <table class="form-table" style="margin-top:0.5rem;">
-      <tr>
-        <td>SSID</td>
-        <td><input type="text" id="ap_ssid" maxlength="32" placeholder="RagaNeoAir"></td>
-      </tr>
-      <tr>
-        <td>Password</td>
-        <td>
-          <input type="text" id="ap_password" placeholder="Leave empty for open network">
-          <div class="hint">Minimum 8 characters.</div>
-        </td>
-      </tr>
-      <tr>
-        <td>Channel</td>
-        <td>
-          <select id="ap_channel">
-            <option value="1">1</option><option value="2">2</option><option value="3">3</option>
-            <option value="4" selected>4</option><option value="5">5</option><option value="6">6</option>
-            <option value="7">7</option><option value="8">8</option><option value="9">9</option>
-            <option value="10">10</option><option value="11">11</option><option value="12">12</option>
-            <option value="13">13</option>
-          </select>
-        </td>
-      </tr>
+      <tr><td>SSID</td><td><input type="text" id="ap_ssid" maxlength="32" placeholder="Travel-Net"></td></tr>
+      <tr><td>Password</td><td><input type="text" id="ap_password" placeholder="Leave empty for open network"><div class="hint">Minimum 8 characters.</div></td></tr>
     </table>
   </div>
 
-  <!-- Step 2: Connect to WiFi -->
-  <div class="step">
+  <!-- Step 2: WiFi Uplink -->
+  <div class="step" id="step-wifi">
     <div>
       <span class="step-number">2</span>
-      <span class="step-title">Connect to WiFi</span>
+      <span class="step-title">WiFi Uplink</span>
       <span style="color:#888;font-size:0.8rem;margin-left:0.5rem;">(optional)</span>
     </div>
-    <p style="color:#888;font-size:0.8rem;margin-top:0.3rem;">
-      Connect to an uplink WiFi network for internet access through the AP.
-    </p>
-    <div>
-      <button class="ok-button" onclick="scanNetworks()" id="scan-btn" style="margin-top:0.3rem;padding:0.5rem 1rem;font-size:0.85rem;">📡 Scan for Networks</button>
-    </div>
+    <button class="ok-button" onclick="scanNetworks()" id="scan-btn" style="margin-top:0.3rem;padding:0.5rem 1rem;font-size:0.85rem;">Scan for Networks</button>
     <div id="scan-results" class="scan-list" style="display:none;"></div>
     <div id="selected-network-info" style="display:none;margin-top:0.5rem;padding:0.5rem;background:rgba(0,217,255,0.05);border-radius:6px;">
       <div style="font-size:0.9rem;">Selected: <strong id="selected-ssid"></strong></div>
-      <input type="password" id="connect-password" placeholder="Enter WiFi password" style="width:100%;margin-top:0.3rem;">
+      <input type="password" id="connect-password" placeholder="WiFi password" style="width:100%;margin-top:0.3rem;">
       <button class="ok-button" onclick="doConnect()" id="connect-btn" style="margin-top:0.3rem;padding:0.5rem 1rem;font-size:0.85rem;">Connect</button>
       <div id="connect-message" class="message" style="margin-top:0.3rem;"></div>
     </div>
   </div>
 
   <!-- Step 3: Apply -->
-  <div class="step">
+  <div class="step" id="step-apply">
     <div>
       <span class="step-number">3</span>
       <span class="step-title">Apply Configuration</span>
     </div>
-    <p style="color:#888;font-size:0.8rem;margin-top:0.3rem;">
-      Save AP settings and restart the access point.
-    </p>
     <button class="ok-button" onclick="applyConfig()" id="apply-btn">Save &amp; Apply</button>
     <div id="apply-message" class="message" style="margin-top:0.3rem;"></div>
   </div>
 
   <div style="margin-top:1rem;text-align:center;">
-    <a href="/" class="nav-button" style="display:inline-block;padding:0.6rem 1.5rem;font-size:0.9rem;text-decoration:none;">🏠 Home</a>
+    <a href="/" class="nav-button" style="display:inline-block;padding:0.6rem 1.5rem;font-size:0.9rem;text-decoration:none;">Home</a>
   </div>
 </div>
 
 <script>
 let selectedSSID = null;
 let connecting = false;
+let currentReadonly = false;
 
 function escapeHtml(str) {
   if (typeof str !== 'string') return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function checkRootfs() {
+  try {
+    const r = await fetch('/api/system/rootfs-status');
+    const data = await r.json();
+    currentReadonly = data.readonly;
+    const box = document.getElementById('ro-status-box');
+    const btn = document.getElementById('toggle-ro-btn');
+    if (currentReadonly) {
+      box.className = 'ro-status ro';
+      box.innerHTML = '<strong style="color:#00d9ff;">Read-Only</strong> &mdash; OS is protected from power-loss corruption';
+      btn.className = 'big-button btn-rw';
+      btn.textContent = 'Make Writable & Reboot';
+      btn.style.display = 'block';
+    } else {
+      box.className = 'ro-status rw';
+      box.innerHTML = '<strong style="color:#ff9800;">Writable</strong> &mdash; Configure your router below, then lock when done';
+      btn.className = 'big-button btn-ro';
+      btn.textContent = 'Make Read-Only & Reboot';
+      btn.style.display = 'block';
+    }
+  } catch {
+    document.getElementById('ro-status-box').innerHTML = '<span style="color:#888;">Unable to check filesystem status</span>';
+  }
+}
+
+async function toggleRootfs() {
+  const btn = document.getElementById('toggle-ro-btn');
+  const msg = document.getElementById('toggle-msg');
+  btn.disabled = true;
+  msg.className = 'message';
+
+  const endpoint = currentReadonly ? '/api/system/make-writable' : '/api/system/make-readonly';
+  const action = currentReadonly ? 'writable' : 'read-only';
+
+  try {
+    const r = await fetch(endpoint, { method: 'POST' });
+    const data = await r.json();
+    if (data.success) {
+      msg.className = 'message success show';
+      msg.textContent = 'Switching to ' + action + '. Device will reboot in 3 seconds...';
+      setTimeout(() => {
+        msg.textContent = 'Rebooting... Please reconnect to the AP and refresh this page.';
+      }, 4000);
+    } else {
+      msg.className = 'message error show';
+      msg.textContent = data.error || 'Failed to toggle filesystem.';
+      btn.disabled = false;
+    }
+  } catch {
+    msg.className = 'message error show';
+    msg.textContent = 'Error toggling filesystem.';
+    btn.disabled = false;
+  }
 }
 
 async function scanNetworks() {
@@ -145,13 +183,11 @@ async function scanNetworks() {
   btn.textContent = 'Scanning...';
   results.style.display = 'block';
   results.innerHTML = '<div style="text-align:center;color:#888;padding:0.5rem;"><span class="spinner"></span> Scanning...</div>';
-
   try {
     const r = await fetch('/api/scan');
     const data = await r.json();
     const nets = data.networks || [];
     const connectedSsid = data.connected_ssid;
-
     if (nets.length === 0) {
       results.innerHTML = '<div style="color:#888;padding:0.5rem;text-align:center;">No networks found.</div>';
     } else {
@@ -162,9 +198,8 @@ async function scanNetworks() {
         div.className = 'network-item' + (net.ssid === connectedSsid ? ' connected' : '');
         const lock = net.security && net.security !== '' && net.security !== '--' ? '🔒' : '🔓';
         const badge = net.ssid === connectedSsid ? '<span class="connected-badge">Connected</span>' : '';
-        const bars = net.signal > 75 ? '📶' : net.signal > 50 ? '📶' : net.signal > 25 ? '📶' : '📶';
         div.innerHTML = '<span style="font-weight:500;">' + escapeHtml(net.ssid) + '</span> ' + badge +
-          '<span style="float:right;color:#888;font-size:0.85rem;">' + bars + ' ' + net.signal + '% ' + lock + '</span>';
+          '<span style="float:right;color:#888;font-size:0.85rem;">' + net.signal + '% ' + lock + '</span>';
         if (net.ssid !== connectedSsid) {
           div.addEventListener('click', () => selectNetwork(net.ssid));
         }
@@ -175,7 +210,7 @@ async function scanNetworks() {
     results.innerHTML = '<div style="color:#f44336;padding:0.5rem;text-align:center;">Scan failed.</div>';
   }
   btn.disabled = false;
-  btn.textContent = '📡 Scan for Networks';
+  btn.textContent = 'Scan for Networks';
 }
 
 function selectNetwork(ssid) {
@@ -184,7 +219,6 @@ function selectNetwork(ssid) {
   document.getElementById('selected-network-info').style.display = 'block';
   document.getElementById('connect-password').value = '';
   document.getElementById('connect-password').focus();
-  document.getElementById('connect-message').className = 'message';
 }
 
 async function doConnect() {
@@ -196,7 +230,6 @@ async function doConnect() {
   btn.disabled = true;
   btn.textContent = 'Connecting...';
   msg.className = 'message';
-
   try {
     const r = await fetch('/api/connect', {
       method: 'POST',
@@ -226,13 +259,10 @@ async function applyConfig() {
   btn.disabled = true;
   btn.textContent = 'Applying...';
   msg.className = 'message';
-
   const cfg = {
-    ap_ssid: document.getElementById('ap_ssid').value.trim() || 'RagaNeoAir',
+    ap_ssid: document.getElementById('ap_ssid').value.trim() || 'Travel-Net',
     ap_password: document.getElementById('ap_password').value,
-    ap_channel: parseInt(document.getElementById('ap_channel').value) || 4,
   };
-
   try {
     const r = await fetch('/api/config', {
       method: 'POST',
@@ -242,7 +272,7 @@ async function applyConfig() {
     const data = await r.json();
     if (data.success) {
       msg.className = 'message success show';
-      msg.innerHTML = 'Settings saved! The AP will restart. Reconnect to <strong>' + cfg.ap_ssid + '</strong> and browse to <strong>http://192.168.4.1</strong>.';
+      msg.innerHTML = 'Settings saved! AP will restart. Reconnect to <strong>' + cfg.ap_ssid + '</strong> at <strong>http://192.168.4.1</strong>.';
     } else {
       msg.className = 'message error show';
       msg.textContent = data.error || 'Save failed.';
@@ -255,16 +285,16 @@ async function applyConfig() {
   btn.textContent = 'Save & Apply';
 }
 
-// Pre-fill current config
 async function loadCurrentConfig() {
   try {
     const r = await fetch('/api/config');
     const cfg = await r.json();
     if (cfg.ap_ssid) document.getElementById('ap_ssid').value = cfg.ap_ssid;
     if (cfg.ap_password) document.getElementById('ap_password').value = cfg.ap_password;
-    if (cfg.ap_channel) document.getElementById('ap_channel').value = cfg.ap_channel;
   } catch {}
 }
+
+checkRootfs();
 loadCurrentConfig();
 </script>
 </body>

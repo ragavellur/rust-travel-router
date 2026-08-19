@@ -57,6 +57,9 @@ pub struct Config {
     pub power_mode: String,
 
     #[serde(default)]
+    pub rootfs_readonly: bool,
+
+    #[serde(default)]
     pub vpn: VpnConfig,
 }
 
@@ -192,6 +195,7 @@ impl Default for Config {
             web_password: String::new(),
             ap_band: default_ap_band(),
             power_mode: default_power_mode(),
+            rootfs_readonly: false,
             vpn: VpnConfig::default(),
         }
     }

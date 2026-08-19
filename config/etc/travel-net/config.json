@@ -13,5 +13,6 @@
   "sta_ssid": "",
   "sta_password": "",
   "wifi_backend": "auto",
-  "web_password": ""
+  "web_password": "",
+  "rootfs_readonly": false
 }

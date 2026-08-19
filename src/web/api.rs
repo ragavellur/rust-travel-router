@@ -159,6 +159,9 @@ pub fn routes() -> Router<AppState> {
         .route("/api/vpn/genkeys", post(api_vpn_genkeys))
         .route("/api/vpn/peers", post(api_vpn_peers))
         .route("/api/vpn/install", post(api_vpn_install))
+        .route("/api/system/rootfs-status", get(api_rootfs_status))
+        .route("/api/system/make-writable", post(api_make_writable))
+        .route("/api/system/make-readonly", post(api_make_readonly))
 }
 
 async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderMap) -> Json<StatusResponse> {
@@ -720,4 +723,69 @@ async fn api_vpn_install(
             Json(serde_json::json!({"success": false, "error": e})),
         )),
     }
+}
+
+async fn api_rootfs_status(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    if !is_authed(&state, &headers).await {
+        return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Unauthorized"}))).into_response();
+    }
+    let readonly = crate::system::remount::is_rootfs_readonly();
+    (StatusCode::OK, Json(serde_json::json!({"readonly": readonly}))).into_response()
+}
+
+async fn api_make_writable(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    let mut cfg = state.config.write().await;
+    cfg.rootfs_readonly = false;
+    let path = std::path::Path::new("/etc/travel-net/config.json");
+    config::save(path, &cfg).map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e.to_string()})))
+    })?;
+    drop(cfg);
+
+    if let Err(e) = crate::system::remount::make_writable() {
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e}))));
+    }
+
+    tokio::spawn(async {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        reboot::reboot().ok();
+    });
+
+    Ok(Json(serde_json::json!({"success": true, "message": "Remounting rootfs as writable. Rebooting..."})))
+}
+
+async fn api_make_readonly(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    let mut cfg = state.config.write().await;
+    cfg.rootfs_readonly = true;
+    let path = std::path::Path::new("/etc/travel-net/config.json");
+    config::save(path, &cfg).map_err(|e| {
+        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e.to_string()})))
+    })?;
+    drop(cfg);
+
+    if let Err(e) = crate::system::remount::make_readonly() {
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e}))));
+    }
+
+    tokio::spawn(async {
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+        reboot::reboot().ok();
+    });
+
+    Ok(Json(serde_json::json!({"success": true, "message": "Locking filesystem as read-only. Rebooting..."})))
 }

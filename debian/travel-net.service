@@ -2,7 +2,6 @@
 Description=travel-net NAT Router
 After=network.target network-online.target travel-net-overlay.service
 Wants=network-online.target
-Requires=travel-net-overlay.service
 
 [Service]
 Type=simple
