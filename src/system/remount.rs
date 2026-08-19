@@ -102,8 +102,28 @@ pub fn make_readonly() -> Result<(), String> {
         .output()
         .map_err(|e| format!("mount remount,ro: {e}"))?;
     if !output.status.success() {
-        return Err("Failed to remount rootfs ro".into());
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let msg = format!("mount -o remount,ro / failed: stderr={stderr} stdout={stdout}");
+        tracing::error!("{msg}");
+        eprintln!("{msg}");
+        // Try to find what's holding files open
+        let fuser = Command::new("fuser").args(["-vm", "/"]).output();
+        if let Ok(out) = fuser {
+            let fuser_out = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            tracing::error!("fuser / : {fuser_out}");
+        }
+        return Err(msg);
     }
+
+    // Enable overlay service for next boot
+    let _ = Command::new("systemctl")
+        .args(["enable", "travel-net-overlay.service"])
+        .output();
+
+    // Persist settings to disk while still rw (before remount)
+    persist_config();
+    persist_nm_connections();
 
     Ok(())
 }
