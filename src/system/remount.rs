@@ -62,6 +62,151 @@ fn finish_write(did_remount: bool) {
     }
 }
 
+// ── fstab manipulation ─────────────────────────────────────────────────
+
+const NM_TMPFS_ENTRIES: &[&str] = &[
+    "tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0",
+    "tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0",
+    "tmpfs /var/log tmpfs defaults,nosuid,nodev,size=50M 0 0",
+    "tmpfs /var/run tmpfs defaults,nosuid,nodev,size=10M 0 0",
+    "tmpfs /var/lock tmpfs defaults,nosuid,nodev,size=5M 0 0",
+    "tmpfs /var/lib/NetworkManager tmpfs defaults,nosuid,nodev,size=20M,mode=755 0 0",
+    "tmpfs /etc/NetworkManager/system-connections tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0",
+    "tmpfs /etc/NetworkManager/dnsmasq-shared.d tmpfs defaults,nosuid,nodev,size=1M,mode=755 0 0",
+    "tmpfs /etc/NetworkManager/conf.d tmpfs defaults,nosuid,nodev,size=1M,mode=755 0 0",
+];
+
+const HOSTAPD_TMPFS_ENTRIES: &[&str] = &[
+    "tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0",
+    "tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0",
+    "tmpfs /var/log tmpfs defaults,nosuid,nodev,size=50M 0 0",
+    "tmpfs /var/run tmpfs defaults,nosuid,nodev,size=10M 0 0",
+    "tmpfs /var/lock tmpfs defaults,nosuid,nodev,size=5M 0 0",
+    "tmpfs /etc/hostapd tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0",
+    "tmpfs /etc/wpa_supplicant tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0",
+    "tmpfs /etc/dnsmasq.d tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0",
+    "tmpfs /var/lib/dnsmasq tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0",
+];
+
+fn detect_backend() -> String {
+    if Command::new("nmcli").output().is_ok()
+        && Command::new("NetworkManager").output().is_ok()
+    {
+        "networkmanager".to_string()
+    } else {
+        "hostapd".to_string()
+    }
+}
+
+fn ensure_dir(path: &str) {
+    let _ = std::fs::create_dir_all(path);
+}
+
+fn ensure_mount_dirs(backend: &str) {
+    // Common dirs
+    ensure_dir("/tmp");
+    ensure_dir("/var/tmp");
+    ensure_dir("/var/log");
+    ensure_dir("/var/run");
+    ensure_dir("/var/lock");
+
+    if backend == "networkmanager" {
+        ensure_dir("/var/lib/NetworkManager");
+        ensure_dir("/etc/NetworkManager/system-connections");
+        ensure_dir("/etc/NetworkManager/dnsmasq-shared.d");
+        ensure_dir("/etc/NetworkManager/conf.d");
+    } else {
+        ensure_dir("/etc/hostapd");
+        ensure_dir("/etc/wpa_supplicant");
+        ensure_dir("/etc/dnsmasq.d");
+        ensure_dir("/var/lib/dnsmasq");
+    }
+}
+
+fn add_fstab_entries(backend: &str) -> Result<(), String> {
+    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
+    let entries = if backend == "networkmanager" {
+        NM_TMPFS_ENTRIES
+    } else {
+        HOSTAPD_TMPFS_ENTRIES
+    };
+
+    let mut new_lines: Vec<String> = fstab.lines().map(|l| l.to_string()).collect();
+
+    for entry in entries {
+        let mount_point = entry.split_whitespace().nth(1).unwrap_or("");
+        // Skip if already present
+        if new_lines.iter().any(|l| l.starts_with(&format!("tmpfs {mount_point} "))) {
+            continue;
+        }
+        new_lines.push(entry.to_string());
+    }
+
+    let new_fstab = new_lines.join("\n") + "\n";
+    std::fs::write("/etc/fstab", &new_fstab).map_err(|e| format!("Write fstab: {e}"))?;
+    Ok(())
+}
+
+fn remove_fstab_entries() -> Result<(), String> {
+    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
+    let new_fstab: String = fstab
+        .lines()
+        .filter(|line| !line.starts_with("tmpfs /tmp ") && !line.starts_with("tmpfs /var/tmp ")
+            && !line.starts_with("tmpfs /var/log ") && !line.starts_with("tmpfs /var/run ")
+            && !line.starts_with("tmpfs /var/lock ") && !line.starts_with("tmpfs /var/lib/NetworkManager ")
+            && !line.starts_with("tmpfs /etc/NetworkManager/system-connections ")
+            && !line.starts_with("tmpfs /etc/NetworkManager/dnsmasq-shared.d ")
+            && !line.starts_with("tmpfs /etc/NetworkManager/conf.d ")
+            && !line.starts_with("tmpfs /etc/hostapd ") && !line.starts_with("tmpfs /etc/wpa_supplicant ")
+            && !line.starts_with("tmpfs /etc/dnsmasq.d ") && !line.starts_with("tmpfs /var/lib/dnsmasq "))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write("/etc/fstab", &(new_fstab + "\n")).map_err(|e| format!("Write fstab: {e}"))?;
+    Ok(())
+}
+
+fn set_fstab_ro() -> Result<(), String> {
+    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
+    let new_fstab: String = fstab
+        .lines()
+        .map(|line| {
+            if (line.starts_with("UUID=") || line.starts_with("/dev/"))
+                && line.contains(" / ext4 ")
+                && !line.contains(",ro")
+                && !line.starts_with("ro,")
+            {
+                line.replacen("defaults", "ro,defaults", 1)
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write("/etc/fstab", &new_fstab).map_err(|e| format!("Write fstab: {e}"))?;
+    Ok(())
+}
+
+fn remove_fstab_ro() -> Result<(), String> {
+    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
+    let new_fstab: String = fstab
+        .lines()
+        .map(|line| {
+            if (line.starts_with("UUID=") || line.starts_with("/dev/"))
+                && line.contains(" / ext4 ")
+            {
+                line.replace("ro,defaults", "defaults")
+                    .replace(",ro,", ",")
+                    .replace(",ro,", ",")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write("/etc/fstab", &new_fstab).map_err(|e| format!("Write fstab: {e}"))?;
+    Ok(())
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 pub fn safe_write(path: &std::path::Path, content: &str) -> Result<(), String> {
@@ -108,14 +253,20 @@ pub fn save_config(path: &std::path::Path, cfg: &crate::config::Config) -> Resul
     Ok(())
 }
 
-// ── Make readonly / writable (config flag only — fstab is set by postinst) ─
-
+/// Enable RO protection: add tmpfs fstab entries, set rootfs ro, reboot.
 pub fn make_readonly() -> Result<(), String> {
+    let backend = detect_backend();
+    ensure_mount_dirs(&backend);
+    add_fstab_entries(&backend)?;
+    set_fstab_ro()?;
     let _ = Command::new("sync").output();
     Ok(())
 }
 
+/// Disable RO protection: remove tmpfs fstab entries, remove ro, reboot.
 pub fn make_writable() -> Result<(), String> {
+    remove_fstab_entries()?;
+    remove_fstab_ro()?;
     let _ = Command::new("sync").output();
     Ok(())
 }

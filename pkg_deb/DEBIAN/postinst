@@ -34,6 +34,12 @@ detect_backend() {
 
 add_fstab_tmpfs_nm() {
     local fstab="/etc/fstab"
+    # Ensure mount point directories exist before adding fstab entries
+    mkdir -p /tmp /var/tmp /var/log /var/run /var/lock
+    mkdir -p /var/lib/NetworkManager
+    mkdir -p /etc/NetworkManager/system-connections
+    mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+    mkdir -p /etc/NetworkManager/conf.d
     local entries="
 tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0
 tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0
@@ -57,6 +63,9 @@ tmpfs /etc/NetworkManager/conf.d tmpfs defaults,nosuid,nodev,size=1M,mode=755 0 
 
 add_fstab_tmpfs_hostapd() {
     local fstab="/etc/fstab"
+    # Ensure mount point directories exist before adding fstab entries
+    mkdir -p /tmp /var/tmp /var/log /var/run /var/lock
+    mkdir -p /etc/hostapd /etc/wpa_supplicant /etc/dnsmasq.d /var/lib/dnsmasq
     local entries="
 tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0
 tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0
