@@ -1,57 +1,45 @@
+
 Package: travel-net
-Version: 0.2.16-1
+Priority: optional
+Section: net
+Installed-Size: 1200
+Maintainer: Travel Net Dev <dev@travel-net.local>
 Architecture: amd64
-Maintainer: Travel Net Dev <dev@travel-net.local>
-Depends: network-manager, wpasupplicant, nftables, iw, wireguard-tools
-Recommends: ntpdate
-Filename: ./travel-net_0.2.16-1_amd64.deb
-Size: 1253032
-MD5sum: 28fd48f527bc8c8aeb28289252a42bfe
-SHA1: c7177fc1671f6c8fffd3ee77f5c24b5a59383fb8
-SHA256: 62ff5f980ca0f7ae510a7bfc9d6db0213b5f6cd2a02006f0e4af3898064b0c73
-Section: net
-Priority: optional
+Filename: travel-net_0.2.17-1_amd64.deb
+Size: 1254260
+MD5Sum: 7e77325edf6a4057c1a8d6015c2e445b
+SHA1: ffe39aff3ccb529a413c63545eab67ed93b89ebb
+SHA256: e416f7501343ba109a4b24d1eced8f9815fe2d3e5a40523e6f64c862f6791399
+Homepage: https://github.com/ragavellur/rust-travel-router
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
- Features: AP+STA hybrid mode, web UI, WiFi scanning,
- VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
- Inspired by the ESP32 NAT Router.
 
 Package: travel-net
-Version: 0.2.16-1
+Priority: optional
+Section: net
+Installed-Size: 1200
+Maintainer: Travel Net Dev <dev@travel-net.local>
 Architecture: arm64
-Maintainer: Travel Net Dev <dev@travel-net.local>
-Depends: network-manager, wpasupplicant, nftables, iw, wireguard-tools
-Recommends: ntpdate
-Filename: ./travel-net_0.2.16-1_arm64.deb
-Size: 1203520
-MD5sum: af46bf1533f1ab23149d5efce994fc8c
-SHA1: 9ece35a0824ff7e17ed72f63ac32313ecf17deea
-SHA256: 40c72ccf482ff14d22be0c03d4ead4bc3e8a8c91f2225d30bb5751fe9d063d30
-Section: net
-Priority: optional
+Filename: travel-net_0.2.17-1_arm64.deb
+Size: 1204232
+MD5Sum: e961920653f51ad5711f20a71557afca
+SHA1: 3c1850f0a8434bd25eb9695012126b42018b5bcc
+SHA256: 0d03b9b792916fe3594bb3584bf4fa04b27be34299357c7b50da333a5175bce5
+Homepage: https://github.com/ragavellur/rust-travel-router
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
- Features: AP+STA hybrid mode, web UI, WiFi scanning,
- VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
- Inspired by the ESP32 NAT Router.
 
 Package: travel-net
-Version: 0.2.16-1
-Architecture: armhf
-Maintainer: Travel Net Dev <dev@travel-net.local>
-Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools
-Recommends: ntpdate
-Filename: ./travel-net_0.2.16-1_armhf.deb
-Size: 1147658
-MD5sum: 54cd1c8f05a52476bdceea77ac8d1188
-SHA1: f2b1e73672b1ef0e5eb5d1d3056efa64f165d7e5
-SHA256: 7b42a1f8e6ce6bc53dfa0867642cb08bd2e2d3fa7c950fe62dff5960e1e29088
-Section: net
 Priority: optional
+Section: net
+Installed-Size: 1200
+Maintainer: Travel Net Dev <dev@travel-net.local>
+Architecture: armhf
+Filename: travel-net_0.2.17-1_armhf.deb
+Size: 1148880
+MD5Sum: 81a019c80956077e0136aa9ca339fb83
+SHA1: f7b3a8cc50144a5fc5bbad7a2a3e5f312c32dd45
+SHA256: f927fe174dae6f1e2a4b8b5aeefb94311379d2a4b7e8b3bcd7879ffea3327251
+Homepage: https://github.com/ragavellur/rust-travel-router
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
- Features: AP+STA hybrid mode, web UI, WiFi scanning,
- VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
- Inspired by the ESP32 NAT Router.
-

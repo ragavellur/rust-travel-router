@@ -1,20 +1,26 @@
-Origin: travel-net
+Origin: travel-net APT Repo
 Label: travel-net
 Suite: stable
-Codename: stable
+Codename: debian
 Architectures: amd64 arm64 armhf
 Components: main
-Description: travel-net APT repository
-Date: Wed, 19 Aug 2026 16:04:44 +0000
-MD5Sum:
- 9b71714b5d070417486279dab07be017 2113 Packages
- affe6b1244b9eb5c0e77dd2c935f71ce 760 Packages.gz
- de1568239d637b5a784b9ca052a2bb5c 812 Packages.xz
-SHA1:
- d15cc3d98c47a68364b5f295d3661133ec91f591 2113 Packages
- 3153a3b3632ae4762e969b05be81c68c83085b0a 760 Packages.gz
- 15faf57bc3c4526114d7b164e664111048db6e6f 812 Packages.xz
-SHA256:
- b1d213b580e0455a98c15982d38a051112ac5356946c26e06a76cbfec94bf5ac 2113 Packages
- 58525e9c53aad6b93e3d894aff4412110a2f565592eae2a0885d33805a831b82 760 Packages.gz
- c1b210162c9ea99a04e56b57e0fc3ff07ed5400c83020f36d0edb1355946c08c 812 Packages.xz
+Description: Travel Net APT Repository
+Date: Wed, 19 Aug 2026 17:03:23 +0000
+
+Package: Packages
+Size: 1551
+MD5Sum: 83615eb9c0291d4400c6e57a6190efe8
+SHA1: 7f84ae6c282335a8c812915d82ea167c288e8c2b
+SHA256: 86ffacaa53092ea8192e4bcd887995e2822d0effe0b9354abb033f8827c1f18d
+
+Package: Packages.gz
+Size: 615
+MD5Sum: 246c795ce58a419e351ac4ea9e9f53e3
+SHA1: b9d88b38f2304721ce9b4f5c304a71a172ccce3c
+SHA256: b95b0d07a752c0ea3255a380d04cbb74c2daa52359fcd9c64cf720b457ddf8db
+
+Package: Packages.xz
+Size: 668
+MD5Sum: 9affee533cbc7a4c3b426399774fb3cb
+SHA1: e23e1f2231f228f985980c05dacd45e5e29429b5
+SHA256: 4f0d5a818a4db8a40c5b9dc2a71a038235ad60e9b0628b120f9774b7860fe026
