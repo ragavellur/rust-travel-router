@@ -1,14 +1,14 @@
 Package: travel-net
-Version: 0.2.13-1
+Version: 0.2.14-1
 Architecture: amd64
 Maintainer: Travel Net Dev <dev@travel-net.local>
-Depends: network-manager, wpasupplicant, iw, wireguard-tools
+Depends: network-manager, wpasupplicant, nftables, iw, wireguard-tools
 Recommends: ntpdate
-Filename: ./travel-net_0.2.13-1_amd64.deb
-Size: 1250894
-MD5sum: 7a8429ee73763b564f3f02456cbc4341
-SHA1: 188a95be722dfa19ed5fb4d2d3ce002deb526563
-SHA256: 7a6685b28df335f5432f7b78af59fdac7df7e934a9e99b6a70c84f564fc2432e
+Filename: ./travel-net_0.2.14-1_amd64.deb
+Size: 1250366
+MD5sum: 467f1792bf6c2690fc253963230a9d2d
+SHA1: 0df37748bb1ad20f28c48cfeb220b1cfcfdfcd0e
+SHA256: 3ecf898f241c721ad1b18a6edeb33819b8a35c63beae2801b0f44f9141ac7e06
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -18,16 +18,16 @@ Description: Travel NAT Router with web UI
  Inspired by the ESP32 NAT Router.
 
 Package: travel-net
-Version: 0.2.13-1
+Version: 0.2.14-1
 Architecture: arm64
 Maintainer: Travel Net Dev <dev@travel-net.local>
-Depends: network-manager, wpasupplicant, iw, wireguard-tools
+Depends: network-manager, wpasupplicant, nftables, iw, wireguard-tools
 Recommends: ntpdate
-Filename: ./travel-net_0.2.13-1_arm64.deb
-Size: 1201846
-MD5sum: 5b7dd6e95a743f789bd8b8592bcfb153
-SHA1: 65c68b80bec099830af79a996540df5df60b1324
-SHA256: 0d55615d41b40d0d6d2a5a5164d4d43d42b33197c7e1da91666448aca116f528
+Filename: ./travel-net_0.2.14-1_arm64.deb
+Size: 1201736
+MD5sum: fe4acfd8dbe8fec338c7756ee9cfa348
+SHA1: 4b1839f7aaf3453cff3fb602f22a162941bf6416
+SHA256: d4cc8bc55d814b5c8a6697a18e298d9ff70180bb2fe86f1ad288efa3e66f1ac4
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -37,16 +37,16 @@ Description: Travel NAT Router with web UI
  Inspired by the ESP32 NAT Router.
 
 Package: travel-net
-Version: 0.2.13-1
+Version: 0.2.14-1
 Architecture: armhf
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools
 Recommends: ntpdate
-Filename: ./travel-net_0.2.13-1_armhf.deb
-Size: 1146032
-MD5sum: 3309a1ed64e2110257a4d4c0900dbb7c
-SHA1: 53fed7f6d5db3179769f46de7ba8107d3b30b0c4
-SHA256: 4190e096538d3e61382fdf92acfa7f3df245098ff2e8057aac52c20ac4993303
+Filename: ./travel-net_0.2.14-1_armhf.deb
+Size: 1146026
+MD5sum: e6b38d74879bced4a4e876e05bd30b47
+SHA1: 3d813a58d48c3b76b75f53c01e390b14f2aaba6c
+SHA256: d300c4830af7f8b865d3be9e6b1e6ea90b8b9d792eb024e20a7cd2a599d46df3
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI

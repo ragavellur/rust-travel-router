@@ -5,16 +5,16 @@ Codename: stable
 Architectures: amd64 arm64 armhf
 Components: main
 Description: travel-net APT repository
-Date: Wed, 19 Aug 2026 13:19:48 +0000
+Date: Wed, 19 Aug 2026 13:52:47 +0000
 MD5Sum:
- aac1aabfe9fba7f0c7b82884a4719516 2093 Packages
- c5e581158a0ab4e183b11e14a73d209f 757 Packages.gz
- e4a5e050c8e397a1261f61ac9d84c7b3 808 Packages.xz
+ 4ac4aa02df8b3020bbb7ea2cd588a719 2113 Packages
+ d06ba67e675e0749996e53e506f64cbf 760 Packages.gz
+ c2a5998b3617047101fc1e49fa1641e2 804 Packages.xz
 SHA1:
- cefb6049fabf1a63779f76bc2fe6ae466fdb3435 2093 Packages
- 85c8af8cc688fd654a4034ea709e16419af7133b 757 Packages.gz
- 8c8593a1bf56b7dcfe805c7b19d43743eaaba38b 808 Packages.xz
+ 971808aacd49e84a53e0db1c9b82c2336b361cba 2113 Packages
+ a4c1c0134759d1698c3327a0e76e0eb066438cbb 760 Packages.gz
+ 24edac1c852367b5cab32fbed37c2b4f90ab26e6 804 Packages.xz
 SHA256:
- 0d842e921984065f3e8a57844f62b039c2163950b2655f90fed976dc4f12ab84 2093 Packages
- 32a80b9f225cf929633880213aaee4c5aaa77ac2013579fd5e65da89afbe215d 757 Packages.gz
- e30b15f1f5dc59cfe62ebc034e6b4328538fe051c024330baf97512137cd700e 808 Packages.xz
+ de6130f2127d182d7f0ef6132e62933aa1baa4097669ea3de978032fe6900927 2113 Packages
+ b521f85e1a60bff22966ccf3f0a15ffa103e81e55651f7bc8af521cbc161a0af 760 Packages.gz
+ 55748636ece7b8ea595072d6d34e1fcf9666c22b71c0ac4b46805f9ba5089cbc 804 Packages.xz
