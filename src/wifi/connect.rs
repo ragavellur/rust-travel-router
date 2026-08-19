@@ -28,7 +28,6 @@ fn connect_nmcli(ssid: &str, password: &str, iface: &str) -> Result<String, Stri
 
     let out = cmd.output().map_err(|e| format!("nmcli error: {e}"))?;
     if out.status.success() {
-        crate::system::remount::persist_nm_connections();
         Ok(format!("Connected to {ssid}"))
     } else {
         let err = String::from_utf8_lossy(&out.stderr).to_string();
@@ -97,7 +96,6 @@ fn disconnect_nm(iface: &str, ssid: Option<&str>) -> Result<String, String> {
             .output()
             .map_err(|e| format!("nmcli error: {e}"))?;
         if out.status.success() {
-            crate::system::remount::persist_nm_connections();
             return Ok(format!("Disconnected and forgot {ssid}"));
         }
         let err = String::from_utf8_lossy(&out.stderr).to_string();
@@ -111,7 +109,6 @@ fn disconnect_nm(iface: &str, ssid: Option<&str>) -> Result<String, String> {
                 .output()
                 .map_err(|e| format!("nmcli error: {e}"))?;
             if out2.status.success() {
-                crate::system::remount::persist_nm_connections();
                 return Ok(format!("Disconnected and forgot {ssid}"));
             }
             return Err(String::from_utf8_lossy(&out2.stderr).into());

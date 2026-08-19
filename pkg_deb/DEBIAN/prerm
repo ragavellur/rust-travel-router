@@ -6,50 +6,39 @@ case "$1" in
         # Stop services
         systemctl stop travel-net.service 2>/dev/null || true
         systemctl disable travel-net.service 2>/dev/null || true
-        systemctl stop travel-net-overlay.service 2>/dev/null || true
-        systemctl disable travel-net-overlay.service 2>/dev/null || true
         systemctl stop travel-net-tailscale.service 2>/dev/null || true
         systemctl disable travel-net-tailscale.service 2>/dev/null || true
         systemctl stop travel-net-timesync.service 2>/dev/null || true
         systemctl disable travel-net-timesync.service 2>/dev/null || true
-        systemctl stop travel-net-watchdog.timer 2>/dev/null || true
-        systemctl disable travel-net-watchdog.timer 2>/dev/null || true
 
-        # Remove stale remount-rw.service from older versions
-        if [ -f /etc/systemd/system/remount-rw.service ]; then
-            systemctl stop remount-rw.service 2>/dev/null || true
-            systemctl disable remount-rw.service 2>/dev/null || true
-            rm -f /etc/systemd/system/remount-rw.service 2>/dev/null || true
-        fi
-
-        # Unmount all overlay bind-mounts
-        for dir in \
-            /etc/travel-net \
-            /etc/NetworkManager/system-connections \
-            /etc/NetworkManager/dnsmasq-shared.d \
-            /etc/NetworkManager/conf.d \
-            /etc/hostapd \
-            /etc/wpa_supplicant \
-            /etc/dnsmasq.d \
-            /etc/wireguard \
-            /etc/modprobe.d \
-            /var/lib/dpkg \
-            /var/cache/apt \
-            /var/lib/apt \
-            /etc/apt/sources.list.d \
-            /usr/share/keyrings \
-            /var/lib/NetworkManager \
-            /var/lib/systemd \
-            /var/log \
-            /var/tmp; do
-            umount -l "$dir" 2>/dev/null || true
+        # Remove stale overlay/watchdog from older versions
+        for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer remount-rw.service; do
+            systemctl stop "$svc" 2>/dev/null || true
+            systemctl disable "$svc" 2>/dev/null || true
+            rm -f "/etc/systemd/system/$svc" 2>/dev/null || true
+            rm -f "/etc/systemd/system/multi-user.target.wants/$svc" 2>/dev/null || true
         done
-
-        # Unmount resolv.conf if it's an overlay bind
-        umount -l /etc/resolv.conf 2>/dev/null || true
 
         # Remove NM override
         rm -f /etc/systemd/system/NetworkManager.service.d/override.conf 2>/dev/null || true
+
+        # Remove tmpfs entries from fstab
+        sed -i '/^tmpfs \/tmp /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/var\/tmp /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/var\/log /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/var\/run /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/var\/lock /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/var\/lib\/NetworkManager /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/etc\/NetworkManager\/system-connections /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/etc\/NetworkManager\/dnsmasq-shared.d /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/etc\/NetworkManager\/conf.d /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/etc\/hostapd /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/etc\/wpa_supplicant /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/etc\/dnsmasq.d /d' /etc/fstab 2>/dev/null || true
+        sed -i '/^tmpfs \/var\/lib\/dnsmasq /d' /etc/fstab 2>/dev/null || true
+
+        # Remove ro from root mount
+        sed -i 's/,ro,/,/g; s/,ro$//; s/^ro,//' /etc/fstab 2>/dev/null || true
 
         # Reload systemd
         systemctl daemon-reload 2>/dev/null || true

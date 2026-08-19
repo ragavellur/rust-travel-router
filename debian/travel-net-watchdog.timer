@@ -1,9 +1,0 @@
-[Unit]
-Description=Travel-Net Watchdog Timer — trigger 90s after boot
-
-[Timer]
-OnBootSec=90s
-AccuracySec=5s
-
-[Install]
-WantedBy=timers.target

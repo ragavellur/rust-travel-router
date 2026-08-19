@@ -32,6 +32,89 @@ detect_backend() {
     fi
 }
 
+add_fstab_tmpfs_nm() {
+    local fstab="/etc/fstab"
+    local entries="
+tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0
+tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0
+tmpfs /var/log tmpfs defaults,nosuid,nodev,size=50M 0 0
+tmpfs /var/run tmpfs defaults,nosuid,nodev,size=10M 0 0
+tmpfs /var/lock tmpfs defaults,nosuid,nodev,size=5M 0 0
+tmpfs /var/lib/NetworkManager tmpfs defaults,nosuid,nodev,size=20M,mode=755 0 0
+tmpfs /etc/NetworkManager/system-connections tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
+tmpfs /etc/NetworkManager/dnsmasq-shared.d tmpfs defaults,nosuid,nodev,size=1M,mode=755 0 0
+tmpfs /etc/NetworkManager/conf.d tmpfs defaults,nosuid,nodev,size=1M,mode=755 0 0"
+    echo "$entries" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        # Extract mount point for dedup check
+        mnt=$(echo "$line" | awk '{print $2}')
+        if ! grep -q "^tmpfs $mnt " "$fstab" 2>/dev/null; then
+            echo "$line" >> "$fstab"
+            echo "travel-net: added tmpfs $mnt to fstab"
+        fi
+    done
+}
+
+add_fstab_tmpfs_hostapd() {
+    local fstab="/etc/fstab"
+    local entries="
+tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0
+tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0
+tmpfs /var/log tmpfs defaults,nosuid,nodev,size=50M 0 0
+tmpfs /var/run tmpfs defaults,nosuid,nodev,size=10M 0 0
+tmpfs /var/lock tmpfs defaults,nosuid,nodev,size=5M 0 0
+tmpfs /etc/hostapd tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
+tmpfs /etc/wpa_supplicant tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
+tmpfs /etc/dnsmasq.d tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
+tmpfs /var/lib/dnsmasq tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0"
+    echo "$entries" | while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        mnt=$(echo "$line" | awk '{print $2}')
+        if ! grep -q "^tmpfs $mnt " "$fstab" 2>/dev/null; then
+            echo "$line" >> "$fstab"
+            echo "travel-net: added tmpfs $mnt to fstab"
+        fi
+    done
+}
+
+set_rootfs_ro() {
+    local fstab="/etc/fstab"
+    # Add ,ro to the root mount UUID/dev line if not already present
+    if grep -q "^UUID=.* / ext4 " "$fstab"; then
+        if ! grep "^UUID=.* / ext4 " "$fstab" | grep -q ",ro"; then
+            sed -i 's/^\(UUID=[^ ]* \/ ext4 [^ ]*\)/\1,ro/' "$fstab"
+            echo "travel-net: set rootfs ro in fstab"
+        fi
+    elif grep -q "^\/dev\/.* / ext4 " "$fstab"; then
+        if ! grep "^/dev/.* / ext4 " "$fstab" | grep -q ",ro"; then
+            sed -i 's/^\(\/dev\/[^ ]* \/ ext4 [^ ]*\)/\1,ro/' "$fstab"
+            echo "travel-net: set rootfs ro in fstab"
+        fi
+    fi
+}
+
+remove_fstab_ro() {
+    local fstab="/etc/fstab"
+    sed -i 's/,ro,/,/g; s/,ro$//; s/^ro,//' "$fstab"
+}
+
+remove_fstab_tmpfs() {
+    local fstab="/etc/fstab"
+    sed -i '/^tmpfs \/tmp /d' "$fstab"
+    sed -i '/^tmpfs \/var\/tmp /d' "$fstab"
+    sed -i '/^tmpfs \/var\/log /d' "$fstab"
+    sed -i '/^tmpfs \/var\/run /d' "$fstab"
+    sed -i '/^tmpfs \/var\/lock /d' "$fstab"
+    sed -i '/^tmpfs \/var\/lib\/NetworkManager /d' "$fstab"
+    sed -i '/^tmpfs \/etc\/NetworkManager\/system-connections /d' "$fstab"
+    sed -i '/^tmpfs \/etc\/NetworkManager\/dnsmasq-shared.d /d' "$fstab"
+    sed -i '/^tmpfs \/etc\/NetworkManager\/conf.d /d' "$fstab"
+    sed -i '/^tmpfs \/etc\/hostapd /d' "$fstab"
+    sed -i '/^tmpfs \/etc\/wpa_supplicant /d' "$fstab"
+    sed -i '/^tmpfs \/etc\/dnsmasq.d /d' "$fstab"
+    sed -i '/^tmpfs \/var\/lib\/dnsmasq /d' "$fstab"
+}
+
 setup_nm_backend() {
     mkdir -p /etc/systemd/system/NetworkManager.service.d
     cat > /etc/systemd/system/NetworkManager.service.d/override.conf << 'EOF'
@@ -40,20 +123,6 @@ ReadWritePaths=/etc/NetworkManager/system-connections
 ReadWritePaths=/var/lib/NetworkManager
 ReadWritePaths=/etc/NetworkManager/dnsmasq-shared.d
 EOF
-
-    if ! nmcli connection show travel-net-hotspot >/dev/null 2>&1; then
-        AP_IF=""
-        for iface in wlan1 wlan2; do
-            if [ -d "/sys/class/net/$iface" ]; then
-                AP_IF="$iface"
-                break
-            fi
-        done
-        if [ -n "$AP_IF" ]; then
-            nmcli connection add type wifi con-name travel-net-hotspot \
-                ifname "$AP_IF" ssid Travel-Net mode ap 2>/dev/null || true
-        fi
-    fi
 }
 
 setup_hostapd_backend() {
@@ -64,21 +133,24 @@ cleanup_conflicting_services() {
     local backend="$1"
     echo "travel-net: cleaning up conflicting services..."
 
-    # ALWAYS disable hostapd service — travel-net manages AP directly
     systemctl stop hostapd.service 2>/dev/null || true
     systemctl disable hostapd.service 2>/dev/null || true
 
-    # Remove stale remount-rw.service from older travel-net versions
     if [ -f /etc/systemd/system/remount-rw.service ]; then
         systemctl stop remount-rw.service 2>/dev/null || true
         systemctl disable remount-rw.service 2>/dev/null || true
         rm -f /etc/systemd/system/remount-rw.service 2>/dev/null || true
     fi
 
+    # Remove stale overlay/watchdog from older versions
+    for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer; do
+        systemctl stop "$svc" 2>/dev/null || true
+        systemctl disable "$svc" 2>/dev/null || true
+        rm -f "/etc/systemd/system/$svc" 2>/dev/null || true
+        rm -f "/etc/systemd/system/multi-user.target.wants/$svc" 2>/dev/null || true
+    done
+
     if [ "$backend" = "networkmanager" ]; then
-        # On NM devices, NM manages wpa_supplicant internally.
-        # The standalone wpa_supplicant.service grabs the WiFi interface
-        # before NM does, breaking both STA and AP.
         systemctl stop wpa_supplicant.service 2>/dev/null || true
         systemctl disable wpa_supplicant.service 2>/dev/null || true
     fi
@@ -90,28 +162,33 @@ update_config_rootfs() {
     CONFIG_FILE="/etc/travel-net/config.json"
     if [ -f "$CONFIG_FILE" ]; then
         if [ "$1" = "true" ]; then
-            if command -v python3 >/dev/null 2>&1; then
-                python3 -c "
-import json
-with open('$CONFIG_FILE') as f: c = json.load(f)
-c['rootfs_readonly'] = True
-with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=2)
-" 2>/dev/null || sed -i 's/"rootfs_readonly": *false/"rootfs_readonly": true/' "$CONFIG_FILE"
-            else
-                sed -i 's/"rootfs_readonly": *false/"rootfs_readonly": true/' "$CONFIG_FILE"
-            fi
+            sed -i 's/"rootfs_readonly": *false/"rootfs_readonly": true/' "$CONFIG_FILE" 2>/dev/null || true
         else
-            if command -v python3 >/dev/null 2>&1; then
-                python3 -c "
-import json
-with open('$CONFIG_FILE') as f: c = json.load(f)
-c['rootfs_readonly'] = False
-with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=2)
-" 2>/dev/null || sed -i 's/"rootfs_readonly": *true/"rootfs_readonly": false/' "$CONFIG_FILE"
-            else
-                sed -i 's/"rootfs_readonly": *true/"rootfs_readonly": false/' "$CONFIG_FILE"
-            fi
+            sed -i 's/"rootfs_readonly": *true/"rootfs_readonly": false/' "$CONFIG_FILE" 2>/dev/null || true
         fi
+    fi
+}
+
+configure_volatile_storage() {
+    # journald: volatile (RAM only, no flash writes)
+    if [ -f /etc/systemd/journald.conf ]; then
+        if grep -q "^#Storage=" /etc/systemd/journald.conf; then
+            sed -i 's/^#Storage=.*/Storage=volatile/' /etc/systemd/journald.conf
+        elif grep -q "^Storage=" /etc/systemd/journald.conf; then
+            sed -i 's/^Storage=.*/Storage=volatile/' /etc/systemd/journald.conf
+        else
+            echo "Storage=volatile" >> /etc/systemd/journald.conf
+        fi
+    fi
+
+    # Disable random-seed writes (breaks on ro rootfs)
+    systemctl disable systemd-random-seed.service 2>/dev/null || true
+
+    # Fake hardware clock symlink (prevents boot blocking on no-RTC devices)
+    if [ -e /etc/fake-hwclock.data ] && [ ! -L /etc/fake-hwclock.data ]; then
+        rm -f /etc/fake-hwclock.data
+        ln -sf /tmp/fake-hwclock.data /etc/fake-hwclock.data
+        echo "travel-net: symlinked fake-hwclock.data to /tmp"
     fi
 }
 
@@ -145,9 +222,7 @@ case "$1" in
         BACKEND=$(detect_backend)
         echo "travel-net: detected backend = $BACKEND"
 
-        # Kill conflicting services BEFORE anything else — this is what
-        # breaks networking. hostapd grabs wlan, wpa_supplicant grabs wlan,
-        # remount-rw hangs. Kill them all first.
+        # Kill conflicting services BEFORE anything else
         cleanup_conflicting_services "$BACKEND"
 
         # Ask about RO rootfs
@@ -160,17 +235,27 @@ case "$1" in
         fi
 
         if [ "$ENABLE_RO" = "1" ]; then
+            # Add size-capped tmpfs entries to fstab
             if [ "$BACKEND" = "networkmanager" ]; then
                 setup_nm_backend
+                add_fstab_tmpfs_nm
             else
                 setup_hostapd_backend
+                add_fstab_tmpfs_hostapd
             fi
 
-            systemctl enable travel-net-overlay.service 2>/dev/null || true
+            # Set rootfs to ro in fstab
+            set_rootfs_ro
+
+            # Configure volatile storage (journald, random-seed, fake-hwclock)
+            configure_volatile_storage
+
             update_config_rootfs "true"
-            echo "travel-net: read-only rootfs enabled (overlay service active)"
+            echo "travel-net: read-only rootfs enabled (fstab tmpfs + remount rw/ro)"
         else
-            systemctl disable travel-net-overlay.service 2>/dev/null || true
+            # Remove any previous ro settings
+            remove_fstab_ro
+            remove_fstab_tmpfs
             update_config_rootfs "false"
             echo "travel-net: read-only rootfs disabled (rootfs stays writable)"
         fi
@@ -178,8 +263,6 @@ case "$1" in
         # Enable and start travel-net
         systemctl daemon-reload
         systemctl enable travel-net.service
-        systemctl enable travel-net-watchdog.timer 2>/dev/null || true
-        systemctl start travel-net-watchdog.timer 2>/dev/null || true
         systemctl enable travel-net-tailscale.service 2>/dev/null || true
         systemctl enable travel-net-timesync.service 2>/dev/null || true
         systemctl restart travel-net.service || true

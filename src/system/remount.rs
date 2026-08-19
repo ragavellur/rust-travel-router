@@ -1,32 +1,6 @@
 use std::process::Command;
 
-const OVERLAY_DIRS: &[&str] = &[
-    "/etc/travel-net",
-    "/etc/NetworkManager/system-connections",
-    "/etc/NetworkManager/dnsmasq-shared.d",
-    "/etc/NetworkManager/conf.d",
-    "/etc/hostapd",
-    "/etc/wpa_supplicant",
-    "/etc/dnsmasq.d",
-    "/etc/wireguard",
-    "/etc/modprobe.d",
-    "/var/lib/dpkg",
-    "/var/cache/apt",
-    "/var/lib/apt",
-    "/var/lib/NetworkManager",
-    "/var/lib/systemd",
-    "/var/log",
-    "/var/tmp",
-    "/etc/apt/sources.list.d",
-    "/usr/share/keyrings",
-];
-
-fn tmpdir_for(path: &str) -> String {
-    format!(
-        "/run/overlay-{}",
-        path.replace('/', "_").trim_start_matches('_')
-    )
-}
+// ── Rootfs state detection ──────────────────────────────────────────────
 
 fn read_root_mount_opts() -> String {
     if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
@@ -45,52 +19,9 @@ pub fn is_rootfs_readonly() -> bool {
     opts.contains(",ro") || opts.starts_with("ro,")
 }
 
-pub fn is_overlay_active(dir: &str) -> bool {
-    Command::new("mountpoint")
-        .args(["-q", dir])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
+// ── Remount helpers ─────────────────────────────────────────────────────
 
-/// Lazy-unmount ALL overlay bind-mounts so rootfs can be remounted rw.
-/// `umount -l` detaches immediately even if processes hold files open.
-fn unmount_all_overlays() {
-    if is_overlay_active("/etc/resolv.conf") {
-        let _ = Command::new("umount").args(["-l", "/etc/resolv.conf"]).output();
-    }
-    for dir in OVERLAY_DIRS {
-        if is_overlay_active(dir) {
-            let _ = Command::new("umount").args(["-l", dir]).output();
-        }
-    }
-}
-
-/// Check if a path is writable by attempting a tiny test write.
-fn is_writable(path: &str) -> bool {
-    let test = format!("{path}/.travel-net-rw-test");
-    std::fs::write(&test, b"").is_ok() && std::fs::remove_file(&test).is_ok()
-}
-
-pub fn is_file_on_overlay(path: &std::path::Path) -> bool {
-    let mut current = path.parent().unwrap_or(std::path::Path::new("/"));
-    loop {
-        let s = current.to_str().unwrap_or("");
-        if is_overlay_active(s) {
-            return true;
-        }
-        if current == std::path::Path::new("/") {
-            break;
-        }
-        current = current.parent().unwrap_or(std::path::Path::new("/"));
-    }
-    false
-}
-
-/// Unmount all overlays, then remount rootfs rw.
-/// This ALWAYS succeeds — changing ro→rw doesn't require closing FDs.
 fn remount_rw() -> Result<(), String> {
-    unmount_all_overlays();
     let output = Command::new("mount")
         .args(["-o", "remount,rw", "/"])
         .output()
@@ -99,162 +30,92 @@ fn remount_rw() -> Result<(), String> {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(format!("mount remount,rw / failed: {stderr}"));
     }
-    // Verify the remount actually worked
-    if !is_writable("/") {
-        return Err("mount remount,rw / succeeded but rootfs is still not writable".into());
+    Ok(())
+}
+
+fn remount_ro() -> Result<(), String> {
+    let _ = Command::new("sync").output();
+    let output = Command::new("mount")
+        .args(["-o", "remount,ro", "/"])
+        .output()
+        .map_err(|e| format!("mount remount,ro: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("mount remount,ro / failed: {stderr}"));
     }
     Ok(())
 }
 
-// ── Public API ───────────────────────────────────────────────────────────
+/// If rootfs is ro, remount rw. Returns whether we did a remount.
+fn ensure_rw() -> Result<bool, String> {
+    if is_rootfs_readonly() {
+        remount_rw()?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn finish_write(did_remount: bool) {
+    if did_remount {
+        let _ = remount_ro();
+    }
+}
+
+// ── Public API ──────────────────────────────────────────────────────────
 
 pub fn safe_write(path: &std::path::Path, content: &str) -> Result<(), String> {
-    if is_file_on_overlay(path) {
-        // Fast path: write to tmpfs directly
-        return std::fs::write(path, content).map_err(|e| format!("Write {}: {e}", path.display()));
-    }
-    // Non-overlay file: remount rw, write, done. No remount ro.
-    remount_rw()?;
-    std::fs::write(path, content).map_err(|e| format!("Write {}: {e}", path.display()))
+    let did = ensure_rw()?;
+    let result = std::fs::write(path, content)
+        .map_err(|e| format!("Write {}: {e}", path.display()));
+    if did { let _ = Command::new("sync").output(); }
+    finish_write(did);
+    result
 }
 
 pub fn safe_create_dir_all(path: &std::path::Path) -> Result<(), String> {
     if path.exists() {
         return Ok(());
     }
-    if is_file_on_overlay(path) {
-        return std::fs::create_dir_all(path).map_err(|e| format!("Mkdir {}: {e}", path.display()));
-    }
-    remount_rw()?;
-    std::fs::create_dir_all(path).map_err(|e| format!("Mkdir {}: {e}", path.display()))
+    let did = ensure_rw()?;
+    let result = std::fs::create_dir_all(path)
+        .map_err(|e| format!("Mkdir {}: {e}", path.display()));
+    if did { let _ = Command::new("sync").output(); }
+    finish_write(did);
+    result
 }
 
 pub fn safe_set_permissions(path: &std::path::Path, mode: u32) -> Result<(), String> {
     use std::os::unix::fs::PermissionsExt;
-    if is_file_on_overlay(path) {
-        return std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
-            .map_err(|e| format!("Chmod {}: {e}", path.display()));
-    }
-    remount_rw()?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
-        .map_err(|e| format!("Chmod {}: {e}", path.display()))
+    let did = ensure_rw()?;
+    let result = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .map_err(|e| format!("Chmod {}: {e}", path.display()));
+    if did { let _ = Command::new("sync").output(); }
+    finish_write(did);
+    result
 }
 
 pub fn save_config(path: &std::path::Path, cfg: &crate::config::Config) -> Result<(), Box<dyn std::error::Error>> {
-    let dir = path.parent().unwrap_or(std::path::Path::new("/"));
-    let dir_str = dir.to_str().unwrap_or("");
-
-    if is_overlay_active(dir_str) {
-        // Fast path: write to tmpfs, persist to ext4
-        let tmp = path.with_extension("json.tmp");
-        let data = serde_json::to_string_pretty(cfg)?;
-        std::fs::write(&tmp, &data)?;
-        std::fs::rename(&tmp, path)?;
-        persist_config();
-        return Ok(());
-    }
-
-    // Non-overlay: remount rw, write, persist
-    remount_rw()?;
+    let did = ensure_rw()?;
     let tmp = path.with_extension("json.tmp");
     let data = serde_json::to_string_pretty(cfg)?;
     std::fs::write(&tmp, &data)?;
     std::fs::rename(&tmp, path)?;
-    persist_config();
+    if did {
+        let _ = Command::new("sync").output();
+        finish_write(true);
+    }
     Ok(())
 }
 
-/// Enable overlay protection. Does NOT touch fstab — rootfs stays rw.
-/// Overlays provide the protection layer; ext4 journal is the fallback.
+// ── Make readonly / writable (config flag only — fstab is set by postinst) ─
+
 pub fn make_readonly() -> Result<(), String> {
-    // Enable overlay service for next boot
-    let output = Command::new("systemctl")
-        .args(["enable", "travel-net-overlay.service"])
-        .output()
-        .map_err(|e| format!("Enable overlay: {e}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        tracing::warn!("systemctl enable overlay: {stderr}");
-    }
-
-    // Persist current config to ext4 so it survives reboot
-    persist_config();
-    persist_nm_connections();
-
     let _ = Command::new("sync").output();
     Ok(())
 }
 
-/// Disable overlay protection. Does NOT touch fstab.
 pub fn make_writable() -> Result<(), String> {
-    let output = Command::new("systemctl")
-        .args(["disable", "travel-net-overlay.service"])
-        .output()
-        .map_err(|e| format!("Disable overlay: {e}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        tracing::warn!("systemctl disable overlay: {stderr}");
-    }
-
-    // Also stop it if currently running
-    let _ = Command::new("systemctl")
-        .args(["stop", "travel-net-overlay.service"])
-        .output();
-
-    // Unmount any active overlays so writes go directly to ext4
-    unmount_all_overlays();
-
     let _ = Command::new("sync").output();
     Ok(())
-}
-
-// ── Overlay persistence (unbind → copy → rebind) ─────────────────────────
-
-pub fn persist_config() {
-    persist_overlay_dir("/etc/travel-net");
-}
-
-pub fn persist_nm_connections() {
-    persist_overlay_dir("/etc/NetworkManager/system-connections");
-}
-
-fn persist_overlay_dir(dir: &str) {
-    if !is_overlay_active(dir) {
-        return;
-    }
-    let tmpdir = tmpdir_for(dir);
-
-    // Unbind overlay — exposes ext4 dir
-    let unbind = Command::new("umount").arg(dir).output();
-    if !unbind.map(|o| o.status.success()).unwrap_or(false) {
-        tracing::warn!("Failed to unbind {dir} for persist");
-        return;
-    }
-
-    // Remount rw if needed (rootfs might be ro)
-    let _ = remount_rw();
-
-    // Copy tmpdir → ext4
-    let cp = Command::new("cp")
-        .args(["-a", &format!("{tmpdir}/."), dir])
-        .output();
-    if let Ok(o) = cp {
-        if !o.status.success() {
-            tracing::warn!("persist cp error for {dir}: {}", String::from_utf8_lossy(&o.stderr));
-        }
-    }
-
-    // Rebind overlay
-    let _ = Command::new("mount")
-        .args(["--bind", &tmpdir, dir])
-        .output();
-
-    tracing::info!("Persisted {dir} to disk");
-}
-
-#[allow(dead_code)]
-pub fn persist_all() {
-    for dir in OVERLAY_DIRS {
-        persist_overlay_dir(dir);
-    }
 }

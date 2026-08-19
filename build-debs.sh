@@ -18,10 +18,10 @@ build_arch() {
     local deps="$3"
     echo "=== Building $arch ($target) ==="
     "$ZIGBUILD" zigbuild --release --target "$target"
-    rm -f "$OUT/travel-net_0.2.17-1_${arch}.deb"
+    rm -f "$OUT/travel-net_0.2.18-1_${arch}.deb"
     cat > pkg_deb/DEBIAN/control <<EOF
 Package: travel-net
-Version: 0.2.17-1
+Version: 0.2.18-1
 Architecture: ${arch}
 Depends: ${deps}
 Recommends: ntpdate
@@ -37,13 +37,6 @@ EOF
     cp "target/$target/release/travel-net" pkg_deb/usr/sbin/travel-net
     chmod 755 pkg_deb/usr/sbin/travel-net
     cp debian/travel-net.service pkg_deb/lib/systemd/system/travel-net.service
-    cp debian/travel-net-overlay.service pkg_deb/lib/systemd/system/travel-net-overlay.service
-    cp debian/travel-net-overlay pkg_deb/usr/sbin/travel-net-overlay
-    chmod 755 pkg_deb/usr/sbin/travel-net-overlay
-    cp debian/travel-net-watchdog pkg_deb/usr/sbin/travel-net-watchdog
-    chmod 755 pkg_deb/usr/sbin/travel-net-watchdog
-    cp debian/travel-net-watchdog.service pkg_deb/lib/systemd/system/travel-net-watchdog.service
-    cp debian/travel-net-watchdog.timer pkg_deb/lib/systemd/system/travel-net-watchdog.timer
     cp debian/travel-net-tailscale pkg_deb/usr/sbin/travel-net-tailscale
     chmod 755 pkg_deb/usr/sbin/travel-net-tailscale
     cp debian/travel-net-tailscale.service pkg_deb/lib/systemd/system/travel-net-tailscale.service
@@ -51,8 +44,8 @@ EOF
     chmod 755 pkg_deb/usr/sbin/travel-net-timesync
     cp debian/travel-net-timesync.service pkg_deb/lib/systemd/system/travel-net-timesync.service
     cp config/etc/travel-net/config.json pkg_deb/etc/travel-net/config.json
-    dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.2.17-1_${arch}.deb"
-    echo "=== $arch -> $OUT/travel-net_0.2.17-1_${arch}.deb ==="
+    dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.2.18-1_${arch}.deb"
+    echo "=== $arch -> $OUT/travel-net_0.2.18-1_${arch}.deb ==="
 }
 
 # hostapd backend devices (NanoPi, RPi): brcmfmac/armhf
