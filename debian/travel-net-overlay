@@ -1,13 +1,15 @@
 #!/bin/bash
 # travel-net-overlay: create writable tmpfs bind-mounts over directories
 # that the system and travel-net need to write to at runtime.
-# Rootfs stays ro — entire OS is protected from power-loss corruption.
+#
+# This script ALWAYS creates bind-mounts regardless of rootfs state.
+# On rw rootfs: harmless — writes go to tmpfs, save_config() persists to ext4.
+# On ro rootfs: essential — without this, NM/travel-net can't write anything.
 #
 # CRITICAL: This script MUST NOT use 'set -e'. Every command tolerates failure.
-# If any bind-mount fails, we log and continue. NetworkManager and travel-net
-# will still start — some features may be degraded but the device stays online.
+# If any bind-mount fails, we log and continue.
 
-log() { echo "travel-net-overlay: $*"; }
+log() { echo "travel-net-overlay: $*"; logger -t travel-net-overlay "$*"; }
 
 overlay_bind() {
     local src="$1"
@@ -19,38 +21,28 @@ overlay_bind() {
         return 0
     fi
 
-    # Source dir must exist on ext4
+    # Source dir must exist
     if [ ! -d "$src" ]; then
-        mkdir -p "$src" 2>/dev/null || { log "SKIP $src: cannot create dir"; return 0; }
+        mkdir -p "$src" 2>/dev/null || { log "FAIL $src: cannot create dir"; return 0; }
     fi
 
-    # Tmpdir must exist on /run (tmpfs, always writable)
+    # Tmpdir on /run (tmpfs, always writable, never cleaned by tmpfiles)
     if [ ! -d "$tmpdir" ]; then
-        mkdir -p "$tmpdir" 2>/dev/null || { log "SKIP $src: cannot create tmpdir $tmpdir"; return 0; }
+        mkdir -p "$tmpdir" 2>/dev/null || { log "FAIL $src: cannot create tmpdir $tmpdir"; return 0; }
     fi
 
-    # Copy existing content into tmpdir (first boot: copies ext4 -> tmpfs)
+    # Copy existing content into tmpdir
     cp -a "$src"/. "$tmpdir/" 2>/dev/null || true
 
     # Bind-mount tmpdir over the source
     if mount --bind "$tmpdir" "$src" 2>/dev/null; then
         log "OK $tmpdir -> $src"
     else
-        log "FAIL $src: mount --bind failed"
+        log "FAIL $src: mount --bind failed (errno=$?)"
     fi
 }
 
-# === Check if rootfs is actually ro — skip overlay if rootfs is rw ===
-ROOTFSOpts=$(awk '$2 == "/" {print $4}' /proc/mounts 2>/dev/null)
-case "$ROOTFSOpts" in
-    *ro*) ;;
-    *)
-        log "rootfs opts='$ROOTFSOpts' (rw), skipping overlay"
-        exit 0
-        ;;
-esac
-
-log "rootfs is ro, creating overlay bind-mounts..."
+log "starting overlay setup"
 
 # === travel-net config (all devices) ===
 overlay_bind "/etc/travel-net"
@@ -76,7 +68,7 @@ if [ -d /etc/dnsmasq.d ]; then
     overlay_bind "/etc/dnsmasq.d"
 fi
 
-# === APT/dpkg (needed for install/upgrade even on ro) ===
+# === APT/dpkg (needed for install/upgrade) ===
 overlay_bind "/var/lib/dpkg"
 overlay_bind "/var/cache/apt"
 overlay_bind "/var/lib/apt"
@@ -96,7 +88,7 @@ overlay_bind "/var/tmp"
 # === DNS resolver ===
 RESOLV_TMPDIR="/run/overlay-etc_resolv_conf"
 if [ ! -d "$RESOLV_TMPDIR" ]; then
-    mkdir -p "$RESOLV_TMPDIR" 2>/dev/null || { log "WARN: cannot create resolv tmpdir"; exit 0; }
+    mkdir -p "$RESOLV_TMPDIR" 2>/dev/null || { log "FAIL: cannot create resolv tmpdir"; exit 0; }
 fi
 
 if [ -f /etc/resolv.conf ] && [ ! -L /etc/resolv.conf ]; then
@@ -117,15 +109,15 @@ if ! mountpoint -q /etc/resolv.conf 2>/dev/null; then
     fi
 fi
 
-# === Verify critical overlays are active ===
+# === Verify critical overlays ===
 OVERLAY_OK=0
 OVERLAY_FAIL=0
-for dir in /etc/travel-net /etc/NetworkManager/system-connections; do
+for dir in /etc/travel-net /etc/NetworkManager/system-connections /var/lib/NetworkManager; do
     if mountpoint -q "$dir" 2>/dev/null; then
         OVERLAY_OK=$((OVERLAY_OK + 1))
     else
         OVERLAY_FAIL=$((OVERLAY_FAIL + 1))
-        log "CRITICAL: $dir overlay not active!"
+        log "CRITICAL: $dir overlay NOT active!"
     fi
 done
 

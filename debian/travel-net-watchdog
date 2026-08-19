@@ -1,0 +1,69 @@
+#!/bin/bash
+# travel-net-watchdog: auto-recovery if AP doesn't start after boot.
+# Runs 60 seconds after boot. If the Travel-Net AP is not active,
+# disables overlay service and reboots into rw mode.
+#
+# This is the safety net — if overlays break networking, the device
+# self-heals by rebooting without overlays.
+
+log() { echo "travel-net-watchdog: $*"; logger -t travel-net-watchdog "$*"; }
+
+log "checking if AP is active..."
+
+# Give the system extra time — some SBCs are slow to initialize WiFi
+sleep 15
+
+# Check if travel-net-hotspot is active (NM backend)
+if command -v nmcli >/dev/null 2>&1; then
+    if nmcli -t -f NAME connection show --active 2>/dev/null | grep -q "travel-net-hotspot"; then
+        log "AP is active (NM hotspot), all good"
+        exit 0
+    fi
+fi
+
+# Check if hostapd is running (hostapd backend)
+if pidof hostapd >/dev/null 2>&1; then
+    log "AP is active (hostapd), all good"
+    exit 0
+fi
+
+# Check if travel-net service is even running
+if ! systemctl is-active travel-net.service >/dev/null 2>&1; then
+    log "WARNING: travel-net service is not running"
+fi
+
+# AP is NOT active — overlay likely broke networking
+log "AP NOT ACTIVE after boot — disabling overlay and rebooting for recovery"
+
+# Disable overlay service
+systemctl disable travel-net-overlay.service 2>/dev/null || true
+systemctl stop travel-net-overlay.service 2>/dev/null || true
+
+# Unmount all overlays so writes go directly to ext4
+for dir in \
+    /etc/travel-net \
+    /etc/NetworkManager/system-connections \
+    /etc/NetworkManager/dnsmasq-shared.d \
+    /etc/NetworkManager/conf.d \
+    /etc/hostapd \
+    /etc/wpa_supplicant \
+    /etc/dnsmasq.d \
+    /etc/wireguard \
+    /etc/modprobe.d \
+    /var/lib/dpkg \
+    /var/cache/apt \
+    /var/lib/apt \
+    /etc/apt/sources.list.d \
+    /usr/share/keyrings \
+    /var/lib/NetworkManager \
+    /var/lib/systemd \
+    /var/log \
+    /var/tmp; do
+    umount -l "$dir" 2>/dev/null || true
+done
+umount -l /etc/resolv.conf 2>/dev/null || true
+
+# Reboot into rw mode
+log "rebooting for recovery..."
+sync
+reboot

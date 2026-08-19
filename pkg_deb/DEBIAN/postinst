@@ -178,6 +178,8 @@ case "$1" in
         # Enable and start travel-net
         systemctl daemon-reload
         systemctl enable travel-net.service
+        systemctl enable travel-net-watchdog.timer 2>/dev/null || true
+        systemctl start travel-net-watchdog.timer 2>/dev/null || true
         systemctl enable travel-net-tailscale.service 2>/dev/null || true
         systemctl enable travel-net-timesync.service 2>/dev/null || true
         systemctl restart travel-net.service || true

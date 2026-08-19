@@ -12,6 +12,8 @@ case "$1" in
         systemctl disable travel-net-tailscale.service 2>/dev/null || true
         systemctl stop travel-net-timesync.service 2>/dev/null || true
         systemctl disable travel-net-timesync.service 2>/dev/null || true
+        systemctl stop travel-net-watchdog.timer 2>/dev/null || true
+        systemctl disable travel-net-watchdog.timer 2>/dev/null || true
 
         # Remove stale remount-rw.service from older versions
         if [ -f /etc/systemd/system/remount-rw.service ]; then

@@ -164,81 +164,47 @@ pub fn save_config(path: &std::path::Path, cfg: &crate::config::Config) -> Resul
     Ok(())
 }
 
-/// Write fstab with ro and enable overlay service.
-/// Does NOT remount — reboot is required for RO to take effect.
+/// Enable overlay protection. Does NOT touch fstab — rootfs stays rw.
+/// Overlays provide the protection layer; ext4 journal is the fallback.
 pub fn make_readonly() -> Result<(), String> {
-    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
-    let new_fstab = fstab
-        .lines()
-        .map(|line| {
-            if (line.starts_with("UUID=") || line.starts_with("/dev/"))
-                && line.contains(" / ext4 ")
-                && !line.contains("ro")
-            {
-                line.replacen("defaults", "ro,defaults", 1)
-                    .replacen("errors=remount-ro", "ro,errors=remount-ro", 1)
-            } else {
-                line.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    // Write fstab — if rootfs is rw, write directly. If ro, remount rw first.
-    if is_rootfs_readonly() {
-        remount_rw()?;
-    }
-    std::fs::write("/etc/fstab", &new_fstab)
-        .map_err(|e| format!("Write fstab: {e}"))?;
-
     // Enable overlay service for next boot
-    let _ = Command::new("systemctl")
+    let output = Command::new("systemctl")
         .args(["enable", "travel-net-overlay.service"])
-        .output();
+        .output()
+        .map_err(|e| format!("Enable overlay: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        tracing::warn!("systemctl enable overlay: {stderr}");
+    }
 
     // Persist current config to ext4 so it survives reboot
     persist_config();
     persist_nm_connections();
 
-    // Sync
     let _ = Command::new("sync").output();
-
     Ok(())
 }
 
-/// Write fstab without ro and disable overlay service.
-/// Does NOT remount — reboot is required for RW to take effect.
+/// Disable overlay protection. Does NOT touch fstab.
 pub fn make_writable() -> Result<(), String> {
-    let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
-    let new_fstab = fstab
-        .lines()
-        .map(|line| {
-            if (line.starts_with("UUID=") || line.starts_with("/dev/"))
-                && line.contains(" / ext4 ")
-            {
-                line.replace("ro,", "")
-                    .replace(",ro,", ",")
-                    .replace(",ro ", " ")
-                    .replace(" ro,", " ,")
-            } else {
-                line.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    if is_rootfs_readonly() {
-        remount_rw()?;
-    }
-    std::fs::write("/etc/fstab", &new_fstab)
-        .map_err(|e| format!("Write fstab: {e}"))?;
-
-    let _ = Command::new("systemctl")
+    let output = Command::new("systemctl")
         .args(["disable", "travel-net-overlay.service"])
+        .output()
+        .map_err(|e| format!("Disable overlay: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        tracing::warn!("systemctl disable overlay: {stderr}");
+    }
+
+    // Also stop it if currently running
+    let _ = Command::new("systemctl")
+        .args(["stop", "travel-net-overlay.service"])
         .output();
 
-    let _ = Command::new("sync").output();
+    // Unmount any active overlays so writes go directly to ext4
+    unmount_all_overlays();
 
+    let _ = Command::new("sync").output();
     Ok(())
 }
 
