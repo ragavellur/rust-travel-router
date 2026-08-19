@@ -37,8 +37,8 @@ curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.noarmor.gpg" -o /us
 curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list 2>/dev/null || exit 0
 chmod 0644 /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
 
-apt-get update 2>/dev/null || exit 0
-apt-get install -y tailscale 2>/dev/null || exit 0
+DEBIAN_FRONTEND=noninteractive apt-get update 2>/dev/null || exit 0
+DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale 2>/dev/null || exit 0
 
 systemctl disable tailscaled 2>/dev/null || true
 touch "$MARKER"
