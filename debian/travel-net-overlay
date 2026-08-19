@@ -6,10 +6,6 @@
 # CRITICAL: This script MUST NOT use 'set -e'. Every command tolerates failure.
 # If any bind-mount fails, we log and continue. NetworkManager and travel-net
 # will still start — some features may be degraded but the device stays online.
-#
-# When rootfs is ro, /tmp is also ro (same partition). Tmpdirs are pre-created
-# by make_readonly() in remount.rs BEFORE rootfs goes ro. If they don't exist
-# (e.g. manual fstab edit), we skip that overlay rather than crashing.
 
 log() { echo "travel-net-overlay: $*"; }
 
@@ -19,6 +15,7 @@ overlay_bind() {
 
     # Already mounted — nothing to do
     if mountpoint -q "$src" 2>/dev/null; then
+        log "OK $src (already mounted)"
         return 0
     fi
 
@@ -27,37 +24,28 @@ overlay_bind() {
         mkdir -p "$src" 2>/dev/null || { log "SKIP $src: cannot create dir"; return 0; }
     fi
 
-    # Tmpdir must exist (pre-created by make_readonly, or we're on rw rootfs)
+    # Tmpdir must exist on /run (tmpfs, always writable)
     if [ ! -d "$tmpdir" ]; then
-        mkdir -p "$tmpdir" 2>/dev/null || { log "SKIP $src: tmpdir $tmpdir not available"; return 0; }
+        mkdir -p "$tmpdir" 2>/dev/null || { log "SKIP $src: cannot create tmpdir $tmpdir"; return 0; }
     fi
 
-    # Copy existing content into tmpdir (first boot: copies ext4 → tmpfs)
+    # Copy existing content into tmpdir (first boot: copies ext4 -> tmpfs)
     cp -a "$src"/. "$tmpdir/" 2>/dev/null || true
 
     # Bind-mount tmpdir over the source
     if mount --bind "$tmpdir" "$src" 2>/dev/null; then
-        log "$tmpdir -> $src"
+        log "OK $tmpdir -> $src"
     else
-        log "WARN: failed to bind $src — feature may be degraded"
+        log "FAIL $src: mount --bind failed"
     fi
 }
 
 # === Check if rootfs is actually ro — skip overlay if rootfs is rw ===
-ROOTFSType=$(awk '$2 == "/" {print $3}' /proc/mounts 2>/dev/null)
-case "$ROOTFSType" in
-    ext4|ext3|btrfs) ;;
-    *)
-        log "rootfs type is '$ROOTFSType', skipping overlay"
-        exit 0
-        ;;
-esac
-
 ROOTFSOpts=$(awk '$2 == "/" {print $4}' /proc/mounts 2>/dev/null)
 case "$ROOTFSOpts" in
     *ro*) ;;
     *)
-        log "rootfs is rw, skipping overlay"
+        log "rootfs opts='$ROOTFSOpts' (rw), skipping overlay"
         exit 0
         ;;
 esac
@@ -123,11 +111,23 @@ RESOLV
 fi
 if ! mountpoint -q /etc/resolv.conf 2>/dev/null; then
     if mount --bind "$RESOLV_TMPDIR/resolv.conf" /etc/resolv.conf 2>/dev/null; then
-        log "$RESOLV_TMPDIR/resolv.conf -> /etc/resolv.conf"
+        log "OK $RESOLV_TMPDIR/resolv.conf -> /etc/resolv.conf"
     else
-        log "WARN: failed to bind /etc/resolv.conf"
+        log "FAIL /etc/resolv.conf: mount --bind failed"
     fi
 fi
 
-log "overlay setup complete"
+# === Verify critical overlays are active ===
+OVERLAY_OK=0
+OVERLAY_FAIL=0
+for dir in /etc/travel-net /etc/NetworkManager/system-connections; do
+    if mountpoint -q "$dir" 2>/dev/null; then
+        OVERLAY_OK=$((OVERLAY_OK + 1))
+    else
+        OVERLAY_FAIL=$((OVERLAY_FAIL + 1))
+        log "CRITICAL: $dir overlay not active!"
+    fi
+done
+
+log "overlay setup complete: $OVERLAY_OK ok, $OVERLAY_FAIL failed"
 exit 0

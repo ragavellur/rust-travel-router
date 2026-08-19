@@ -66,6 +66,12 @@ fn unmount_all_overlays() {
     }
 }
 
+/// Check if a path is writable by attempting a tiny test write.
+fn is_writable(path: &str) -> bool {
+    let test = format!("{path}/.travel-net-rw-test");
+    std::fs::write(&test, b"").is_ok() && std::fs::remove_file(&test).is_ok()
+}
+
 pub fn is_file_on_overlay(path: &std::path::Path) -> bool {
     let mut current = path.parent().unwrap_or(std::path::Path::new("/"));
     loop {
@@ -92,6 +98,10 @@ fn remount_rw() -> Result<(), String> {
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(format!("mount remount,rw / failed: {stderr}"));
+    }
+    // Verify the remount actually worked
+    if !is_writable("/") {
+        return Err("mount remount,rw / succeeded but rootfs is still not writable".into());
     }
     Ok(())
 }
