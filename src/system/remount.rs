@@ -1,13 +1,15 @@
 use std::process::Command;
 
-#[allow(dead_code)]
 const OVERLAY_DIRS: &[&str] = &[
     "/etc/travel-net",
     "/etc/NetworkManager/system-connections",
     "/etc/NetworkManager/dnsmasq-shared.d",
+    "/etc/NetworkManager/conf.d",
     "/etc/hostapd",
     "/etc/wpa_supplicant",
     "/etc/dnsmasq.d",
+    "/etc/wireguard",
+    "/etc/modprobe.d",
     "/var/lib/dpkg",
     "/var/cache/apt",
     "/var/lib/apt",
@@ -83,6 +85,74 @@ fn restore_ro(did_remount: bool) {
             tracing::warn!("Failed to restore rootfs to ro after save");
         }
     }
+}
+
+pub fn is_file_on_overlay(path: &std::path::Path) -> bool {
+    let mut current = path.parent().unwrap_or(std::path::Path::new("/"));
+    loop {
+        let s = current.to_str().unwrap_or("");
+        if is_overlay_active(s) {
+            return true;
+        }
+        if current == std::path::Path::new("/") {
+            break;
+        }
+        current = current.parent().unwrap_or(std::path::Path::new("/"));
+    }
+    false
+}
+
+pub fn safe_write(path: &std::path::Path, content: &str) -> Result<(), String> {
+    if is_file_on_overlay(path) {
+        std::fs::write(path, content).map_err(|e| format!("Write {}: {e}", path.display()))?;
+        return Ok(());
+    }
+    let did_rw = ensure_rw_for_write(path)?;
+    let result = std::fs::write(path, content)
+        .map_err(|e| format!("Write {}: {e}", path.display()));
+    restore_ro(did_rw);
+    result
+}
+
+pub fn safe_write_bytes(path: &std::path::Path, content: &[u8]) -> Result<(), String> {
+    if is_file_on_overlay(path) {
+        std::fs::write(path, content).map_err(|e| format!("Write {}: {e}", path.display()))?;
+        return Ok(());
+    }
+    let did_rw = ensure_rw_for_write(path)?;
+    let result = std::fs::write(path, content)
+        .map_err(|e| format!("Write {}: {e}", path.display()));
+    restore_ro(did_rw);
+    result
+}
+
+pub fn safe_create_dir_all(path: &std::path::Path) -> Result<(), String> {
+    if path.exists() {
+        return Ok(());
+    }
+    if is_file_on_overlay(path) {
+        std::fs::create_dir_all(path).map_err(|e| format!("Mkdir {}: {e}", path.display()))?;
+        return Ok(());
+    }
+    let did_rw = ensure_rw_for_write(path)?;
+    let result = std::fs::create_dir_all(path)
+        .map_err(|e| format!("Mkdir {}: {e}", path.display()));
+    restore_ro(did_rw);
+    result
+}
+
+pub fn safe_set_permissions(path: &std::path::Path, mode: u32) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    if is_file_on_overlay(path) {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+            .map_err(|e| format!("Chmod {}: {e}", path.display()))?;
+        return Ok(());
+    }
+    let did_rw = ensure_rw_for_write(path)?;
+    let result = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+        .map_err(|e| format!("Chmod {}: {e}", path.display()));
+    restore_ro(did_rw);
+    result
 }
 
 pub fn save_config(path: &std::path::Path, cfg: &crate::config::Config) -> Result<(), Box<dyn std::error::Error>> {

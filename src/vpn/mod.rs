@@ -2,7 +2,6 @@ use crate::config::{Config, WgPeer};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
 use std::sync::Mutex;
 use std::thread;
@@ -248,7 +247,7 @@ table inet travel-vpn {{
 }
 
 pub fn nft_assert(cfg: &Config) -> Result<(), String> {
-    fs::write(VPN_NFT_FILE, generate_table(cfg)).map_err(|e| format!("Write vpn nft: {e}"))?;
+    crate::system::remount::safe_write(std::path::Path::new(VPN_NFT_FILE), &generate_table(cfg))?;
     let _ = Command::new("sysctl")
         .args(["-w", "net.ipv4.ip_forward=1"])
         .output();
@@ -340,10 +339,10 @@ fn wg_client_conf(cfg: &Config) -> String {
 
 pub fn write_wg_client_conf(cfg: &Config) -> Result<(), String> {
     let dir = std::path::PathBuf::from("/etc/wireguard");
-    fs::create_dir_all(&dir).map_err(|e| format!("Create /etc/wireguard: {e}"))?;
+    crate::system::remount::safe_create_dir_all(&dir)?;
     let path = dir.join("wg0.conf");
-    fs::write(&path, wg_client_conf(cfg)).map_err(|e| format!("Write wg0.conf: {e}"))?;
-    let _ = fs::set_permissions(&path, PermissionsExt::from_mode(0o600));
+    crate::system::remount::safe_write(&path, &wg_client_conf(cfg))?;
+    let _ = crate::system::remount::safe_set_permissions(&path, 0o600);
     Ok(())
 }
 
@@ -571,10 +570,10 @@ fn wg_server_conf(cfg: &Config) -> Result<String, String> {
 
 pub fn write_wg_server_conf(cfg: &Config) -> Result<(), String> {
     let dir = std::path::PathBuf::from("/etc/wireguard");
-    fs::create_dir_all(&dir).map_err(|e| format!("Create /etc/wireguard: {e}"))?;
+    crate::system::remount::safe_create_dir_all(&dir)?;
     let path = dir.join("wg0.conf");
-    fs::write(&path, wg_server_conf(cfg)?).map_err(|e| format!("Write wg0.conf: {e}"))?;
-    let _ = fs::set_permissions(&path, PermissionsExt::from_mode(0o600));
+    crate::system::remount::safe_write(&path, &wg_server_conf(cfg)?)?;
+    let _ = crate::system::remount::safe_set_permissions(&path, 0o600);
     Ok(())
 }
 

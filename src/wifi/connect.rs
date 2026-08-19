@@ -65,7 +65,7 @@ fn connect_wpa_cli(ssid: &str, password: &str, iface: &str) -> Result<String, St
     new_conf.push_str(&String::from_utf8_lossy(&pw_out.stdout));
 
     // Write to tmpfs (bind-mounted or direct)
-    fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))?;
+    crate::system::remount::safe_write(std::path::Path::new(wpa_conf), &new_conf)?;
 
     let _ = Command::new("wpa_cli")
         .args(["-i", iface, "reconfigure"])
@@ -140,7 +140,7 @@ fn disconnect_wpa(iface: &str, ssid: Option<&str>) -> Result<String, String> {
         let cleaned = re.replace_all(&existing, "");
         let new_conf = cleaned.trim().to_string() + "\n";
 
-        fs::write(wpa_conf, &new_conf).map_err(|e| format!("Write wpa_conf: {e}"))?;
+        crate::system::remount::safe_write(std::path::Path::new(wpa_conf), &new_conf)?;
 
         let _ = Command::new("wpa_cli")
             .args(["-i", iface, "reconfigure"])

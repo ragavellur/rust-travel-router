@@ -62,5 +62,5 @@ dhcp-leasefile=/var/lib/misc/dnsmasq.leases
         ap_ip = cfg.ap_ip,
     );
 
-    fs::write(DNSMASQ_CONF, &conf).map_err(|e| format!("Write dnsmasq.conf: {e}"))
+    crate::system::remount::safe_write(std::path::Path::new(DNSMASQ_CONF), &conf)
 }

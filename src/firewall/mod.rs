@@ -29,7 +29,7 @@ pub async fn apply_ruleset(cfg: &Config) -> Result<(), String> {
     let rules = generate_ruleset(cfg, &uplink);
     let nft_file = "/etc/travel-net/travel-net.nft";
 
-    std::fs::write(nft_file, &rules).map_err(|e| format!("Write nftables rules: {e}"))?;
+    crate::system::remount::safe_write(std::path::Path::new(nft_file), &rules)?;
 
     // Enable IP forwarding
     let fw = Command::new("sysctl")
@@ -116,7 +116,7 @@ pub fn apply_performance_tuning(cfg: &Config) {
 
     // Create modprobe config for next boot (aic8800 power save off)
     let modprobe_conf = "options aic8800_fdrv ps_on=0 ap_uapsd_on=0\n";
-    let _ = std::fs::write("/etc/modprobe.d/aic8800-travel-net.conf", modprobe_conf);
+    let _ = crate::system::remount::safe_write(std::path::Path::new("/etc/modprobe.d/aic8800-travel-net.conf"), modprobe_conf);
 
     tracing::info!("Performance tuning applied: mode={}", cfg.power_mode);
 }

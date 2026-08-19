@@ -63,6 +63,13 @@ overlay_bind "/var/lib/apt"
 overlay_bind "/etc/apt/sources.list.d"
 overlay_bind "/usr/share/keyrings"
 
+# === VPN and driver configs ===
+overlay_bind "/etc/wireguard"
+overlay_bind "/etc/modprobe.d"
+
+# === NM conf.d (not covered by system-connections) ===
+overlay_bind "/etc/NetworkManager/conf.d"
+
 # === System runtime state ===
 overlay_bind "/var/lib/NetworkManager"
 overlay_bind "/var/lib/systemd"

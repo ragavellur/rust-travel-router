@@ -10,7 +10,7 @@ fn nm_mark_unmanaged(iface: &str) {
     }
     // Create NM config to ignore this interface permanently
     let conf = format!("[keyfile]\nunmanaged-devices=interface-name:{iface}\n");
-    let _ = std::fs::write(NM_UNMANAGED_CONF, &conf);
+    let _ = crate::system::remount::safe_write(std::path::Path::new(NM_UNMANAGED_CONF), &conf);
     let _ = Command::new("nmcli").args(["general", "reload"]).output();
 }
 
