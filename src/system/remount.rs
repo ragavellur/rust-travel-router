@@ -26,25 +26,95 @@ fn tmpdir_for(path: &str) -> String {
     )
 }
 
+fn read_root_mount_opts() -> String {
+    if let Ok(mounts) = std::fs::read_to_string("/proc/mounts") {
+        for line in mounts.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 && parts[1] == "/" {
+                return parts[3].to_string();
+            }
+        }
+    }
+    String::new()
+}
+
 pub fn is_rootfs_readonly() -> bool {
+    let opts = read_root_mount_opts();
+    opts.contains(",ro") || opts.starts_with("ro,")
+}
+
+pub fn is_overlay_active(dir: &str) -> bool {
     Command::new("mountpoint")
-        .args(["-q", "/"])
+        .args(["-q", dir])
         .output()
-        .map(|o| !o.status.success())
-        .unwrap_or_else(|_| {
-            Command::new("awk")
-                .args(["$", "/ \\//{print $6; exit}", "/etc/fstab"])
-                .output()
-                .map(|o| {
-                    let val = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                    val.contains("ro") && !val.contains("rw")
-                })
-                .unwrap_or(false)
-        })
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn ensure_rw_for_write(path: &std::path::Path) -> Result<bool, String> {
+    if !is_rootfs_readonly() {
+        return Ok(false);
+    }
+    let dir = path.parent().unwrap_or(std::path::Path::new("/"));
+    if is_overlay_active(dir.to_str().unwrap_or("")) {
+        return Ok(false);
+    }
+    let output = Command::new("mount")
+        .args(["-o", "remount,rw", "/"])
+        .output()
+        .map_err(|e| format!("mount remount,rw: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!("Failed to remount rootfs rw for save: {stderr}"));
+    }
+    Ok(true)
+}
+
+fn restore_ro(did_remount: bool) {
+    if !did_remount {
+        return;
+    }
+    let _ = Command::new("sync").output();
+    let output = Command::new("mount")
+        .args(["-o", "remount,ro", "/"])
+        .output();
+    if let Ok(out) = output {
+        if !out.status.success() {
+            tracing::warn!("Failed to restore rootfs to ro after save");
+        }
+    }
+}
+
+pub fn save_config(path: &std::path::Path, cfg: &crate::config::Config) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = path.parent().unwrap_or(std::path::Path::new("/"));
+    let dir_str = dir.to_str().unwrap_or("");
+
+    if is_overlay_active(dir_str) {
+        let tmp = path.with_extension("json.tmp");
+        let data = serde_json::to_string_pretty(cfg)?;
+        std::fs::write(&tmp, &data)?;
+        std::fs::rename(&tmp, path)?;
+        persist_config();
+        return Ok(());
+    }
+
+    let did_rw = ensure_rw_for_write(path)?;
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let tmp = path.with_extension("json.tmp");
+        let data = serde_json::to_string_pretty(cfg)?;
+        std::fs::write(&tmp, &data)?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    })();
+
+    if result.is_ok() {
+        persist_config();
+    }
+    restore_ro(did_rw);
+    result
 }
 
 pub fn make_writable() -> Result<(), String> {
-    // Update fstab: replace ro with rw for rootfs
     let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
     let new_fstab = fstab
         .lines()
@@ -59,14 +129,22 @@ pub fn make_writable() -> Result<(), String> {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::write("/etc/fstab", &new_fstab).map_err(|e| format!("Write fstab: {e}"))?;
 
-    // Remount rootfs rw
+    let did_rw = ensure_rw_for_write(std::path::Path::new("/etc/fstab"))?;
+    let write_result = std::fs::write("/etc/fstab", &new_fstab)
+        .map_err(|e| format!("Write fstab: {e}"));
+
+    if write_result.is_err() {
+        restore_ro(did_rw);
+        return write_result;
+    }
+
     let output = Command::new("mount")
         .args(["-o", "remount,rw", "/"])
         .output()
         .map_err(|e| format!("mount remount,rw: {e}"))?;
     if !output.status.success() {
+        restore_ro(did_rw);
         return Err("Failed to remount rootfs rw".into());
     }
 
@@ -74,10 +152,8 @@ pub fn make_writable() -> Result<(), String> {
 }
 
 pub fn make_readonly() -> Result<(), String> {
-    // Sync before going ro
     let _ = Command::new("sync").output();
 
-    // Update fstab: add ro for rootfs
     let fstab = std::fs::read_to_string("/etc/fstab").map_err(|e| format!("Read fstab: {e}"))?;
     let new_fstab = fstab
         .lines()
@@ -94,9 +170,16 @@ pub fn make_readonly() -> Result<(), String> {
         })
         .collect::<Vec<_>>()
         .join("\n");
-    std::fs::write("/etc/fstab", &new_fstab).map_err(|e| format!("Write fstab: {e}"))?;
 
-    // Remount rootfs ro
+    let did_rw = ensure_rw_for_write(std::path::Path::new("/etc/fstab"))?;
+    let write_result = std::fs::write("/etc/fstab", &new_fstab)
+        .map_err(|e| format!("Write fstab: {e}"));
+
+    if write_result.is_err() {
+        restore_ro(did_rw);
+        return write_result;
+    }
+
     let output = Command::new("mount")
         .args(["-o", "remount,ro", "/"])
         .output()
@@ -107,21 +190,19 @@ pub fn make_readonly() -> Result<(), String> {
         let msg = format!("mount -o remount,ro / failed: stderr={stderr} stdout={stdout}");
         tracing::error!("{msg}");
         eprintln!("{msg}");
-        // Try to find what's holding files open
         let fuser = Command::new("fuser").args(["-vm", "/"]).output();
         if let Ok(out) = fuser {
             let fuser_out = String::from_utf8_lossy(&out.stdout).trim().to_string();
             tracing::error!("fuser / : {fuser_out}");
         }
+        restore_ro(did_rw);
         return Err(msg);
     }
 
-    // Enable overlay service for next boot
     let _ = Command::new("systemctl")
         .args(["enable", "travel-net-overlay.service"])
         .output();
 
-    // Persist settings to disk while still rw (before remount)
     persist_config();
     persist_nm_connections();
 
@@ -131,13 +212,7 @@ pub fn make_readonly() -> Result<(), String> {
 fn persist_dir(src: &str) -> Result<(), String> {
     let tmpdir = tmpdir_for(src);
 
-    let is_mounted = Command::new("mountpoint")
-        .args(["-q", src])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    if !is_mounted {
+    if !is_overlay_active(src) {
         return Ok(());
     }
 
