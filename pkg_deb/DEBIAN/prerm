@@ -1,0 +1,36 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|purge)
+        # Stop services
+        systemctl stop travel-net.service 2>/dev/null || true
+        systemctl disable travel-net.service 2>/dev/null || true
+        systemctl stop travel-net-overlay.service 2>/dev/null || true
+        systemctl disable travel-net-overlay.service 2>/dev/null || true
+
+        # Unmount all overlay bind-mounts
+        for dir in \
+            /etc/travel-net \
+            /etc/NetworkManager/system-connections \
+            /etc/NetworkManager/dnsmasq-shared.d \
+            /etc/hostapd \
+            /etc/wpa_supplicant \
+            /etc/dnsmasq.d \
+            /var/lib/dpkg \
+            /var/cache/apt \
+            /var/lib/apt \
+            /etc/apt/sources.list.d \
+            /usr/share/keyrings \
+            /var/lib/NetworkManager \
+            /var/lib/systemd \
+            /var/log \
+            /var/tmp; do
+            mountpoint -q "$dir" 2>/dev/null && umount "$dir" 2>/dev/null || true
+        done
+
+        # Remove NM override
+        rm -f /etc/systemd/system/NetworkManager.service.d/override.conf 2>/dev/null || true
+        systemctl daemon-reload 2>/dev/null || true
+        ;;
+esac
