@@ -84,6 +84,9 @@ pub struct VpnConfig {
     pub ts_advertise_routes: String,
 
     #[serde(default = "default_true")]
+    pub ts_route_all: bool,
+
+    #[serde(default = "default_true")]
     pub ts_allow_lan: bool,
 
     #[serde(default)]
@@ -158,6 +161,7 @@ impl Default for VpnConfig {
             ts_hostname: String::new(),
             ts_exit_node: String::new(),
             ts_advertise_routes: String::new(),
+            ts_route_all: true,
             ts_allow_lan: true,
             wg_private_key: String::new(),
             wg_peer_public_key: String::new(),

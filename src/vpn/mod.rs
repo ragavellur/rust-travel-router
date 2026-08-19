@@ -487,11 +487,11 @@ pub fn tailscale_up(cfg: &Config) -> Result<(), String> {
         }
         _ => {
             args.push("--accept-routes".into());
-            if !cfg.vpn.ts_exit_node.is_empty() {
+            if cfg.vpn.ts_route_all && !cfg.vpn.ts_exit_node.is_empty() {
                 args.push(format!("--exit-node={}", cfg.vpn.ts_exit_node));
-            }
-            if cfg.vpn.ts_allow_lan {
-                args.push("--exit-node-allow-lan-access".into());
+                if cfg.vpn.ts_allow_lan {
+                    args.push("--exit-node-allow-lan-access".into());
+                }
             }
         }
     }

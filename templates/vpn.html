@@ -171,7 +171,14 @@ function tsSection(isHome) {
         <td>Home node (exit node)</td>
         <td>
           <input type="text" id="ts_exit_node" value="${escapeHtml(vpn.ts_exit_node || '')}" placeholder="home-box">
-          <div class="hint">The home box's hostname in Tailscale. Set it as an exit node on the home box first, and approve it in the admin console.</div>
+          <div class="hint">The home box's hostname or IP in Tailscale. Set it as an exit node on the home box first, and approve it in the admin console.</div>
+        </td>
+      </tr>
+      <tr>
+        <td>Route all internet through home</td>
+        <td>
+          <label><input type="checkbox" id="ts_route_all"${vpn.ts_route_all ? ' checked' : ''}> Send ALL internet traffic through the home network (exit node)</label>
+          <div class="hint">When off: only the home subnet (192.168.x.x) routes through Tailscale — internet goes direct. When on: everything goes through home.</div>
         </td>
       </tr>
       <tr>
@@ -327,6 +334,7 @@ function readFields() {
     vpn.ts_hostname = get('ts_hostname');
     vpn.ts_advertise_routes = get('ts_advertise_routes');
     vpn.ts_exit_node = get('ts_exit_node');
+    vpn.ts_route_all = chk('ts_route_all');
     vpn.ts_allow_lan = chk('ts_allow_lan');
   }
   if (vpn.backend === 'wireguard') {
