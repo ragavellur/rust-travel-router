@@ -5,8 +5,8 @@ Codename: debian
 Architectures: armhf arm64 amd64
 Components: main
 Description: Travel NAT Router APT repository
-Date: Wed, 19 Aug 2026 10:49:49 +0000
+Date: Wed, 19 Aug 2026 11:09:04 +0000
 SHA256:
- 9a8b9d49d8314b9aa58de4e62d3066fbbbdc94745f92c7f1e944caddd8697f31 2093 Packages
- 9a76c106980ca205b52552811f27b7db54fe46966e44092c522366e26ceb79f8 761 Packages.gz
- 1c99165d885cf4ffbdad2e49f0b58fef6ffef26d22c63d0b367994041517195e 812 Packages.xz
+ cfb7c0c1a6564401ffefa45e0a7f7d1ae5ac49cb68758a4f277f906c13a10f2f 2093 Packages
+ 1cbefbb5b6e6946d72c5749fbdebf7cb5788b1b8fcd5299b93ff9af73045ab1e 766 Packages.gz
+ 97d0c3c3e84b726238bc4a5cf3fc2127c449fd51a1e026c2eec2ccd5de15446b 816 Packages.xz
