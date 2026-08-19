@@ -18,10 +18,10 @@ build_arch() {
     local deps="$3"
     echo "=== Building $arch ($target) ==="
     "$ZIGBUILD" zigbuild --release --target "$target"
-    rm -f "$OUT/travel-net_0.2.13-1_${arch}.deb"
+    rm -f "$OUT/travel-net_0.2.14-1_${arch}.deb"
     cat > pkg_deb/DEBIAN/control <<EOF
 Package: travel-net
-Version: 0.2.13-1
+Version: 0.2.14-1
 Architecture: ${arch}
 Depends: ${deps}
 Recommends: ntpdate
@@ -47,14 +47,14 @@ EOF
     chmod 755 pkg_deb/usr/sbin/travel-net-timesync
     cp debian/travel-net-timesync.service pkg_deb/lib/systemd/system/travel-net-timesync.service
     cp config/etc/travel-net/config.json pkg_deb/etc/travel-net/config.json
-    dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.2.13-1_${arch}.deb"
-    echo "=== $arch -> $OUT/travel-net_0.2.13-1_${arch}.deb ==="
+    dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.2.14-1_${arch}.deb"
+    echo "=== $arch -> $OUT/travel-net_0.2.14-1_${arch}.deb ==="
 }
 
 # hostapd backend devices (NanoPi, RPi): brcmfmac/armhf
 build_arch armv7-unknown-linux-gnueabihf armhf "hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools"
 # NetworkManager backend devices (Cubie A5E/A7A, RPi 4/5, laptops)
-build_arch aarch64-unknown-linux-gnu arm64 "network-manager, wpasupplicant, iw, wireguard-tools"
-build_arch x86_64-unknown-linux-gnu amd64 "network-manager, wpasupplicant, iw, wireguard-tools"
+build_arch aarch64-unknown-linux-gnu arm64 "network-manager, wpasupplicant, nftables, iw, wireguard-tools"
+build_arch x86_64-unknown-linux-gnu amd64 "network-manager, wpasupplicant, nftables, iw, wireguard-tools"
 
 echo "=== Done. Debs in $OUT ==="
