@@ -111,6 +111,9 @@ case "$1" in
             cp /usr/share/travel-net/config.default.json /etc/travel-net/config.json 2>/dev/null || true
         fi
 
+        # Install ntpdate for time sync at boot
+        DEBIAN_FRONTEND=noninteractive apt-get install -y ntpdate 2>/dev/null || true
+
         BACKEND=$(detect_backend)
         echo "travel-net: detected backend = $BACKEND"
 
