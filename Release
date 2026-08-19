@@ -1,12 +1,20 @@
-Origin: travel-net APT Repo
-Label: travel-net APT Repo
-Suite: debian
-Codename: debian
-Architectures: armhf arm64 amd64
+Origin: travel-net
+Label: travel-net
+Suite: stable
+Codename: stable
+Architectures: amd64 arm64 armhf
 Components: main
-Description: Travel NAT Router APT repository
-Date: Wed, 19 Aug 2026 11:09:04 +0000
+Description: travel-net APT repository
+Date: Wed, 19 Aug 2026 13:19:48 +0000
+MD5Sum:
+ aac1aabfe9fba7f0c7b82884a4719516 2093 Packages
+ c5e581158a0ab4e183b11e14a73d209f 757 Packages.gz
+ e4a5e050c8e397a1261f61ac9d84c7b3 808 Packages.xz
+SHA1:
+ cefb6049fabf1a63779f76bc2fe6ae466fdb3435 2093 Packages
+ 85c8af8cc688fd654a4034ea709e16419af7133b 757 Packages.gz
+ 8c8593a1bf56b7dcfe805c7b19d43743eaaba38b 808 Packages.xz
 SHA256:
- cfb7c0c1a6564401ffefa45e0a7f7d1ae5ac49cb68758a4f277f906c13a10f2f 2093 Packages
- 1cbefbb5b6e6946d72c5749fbdebf7cb5788b1b8fcd5299b93ff9af73045ab1e 766 Packages.gz
- 97d0c3c3e84b726238bc4a5cf3fc2127c449fd51a1e026c2eec2ccd5de15446b 816 Packages.xz
+ 0d842e921984065f3e8a57844f62b039c2163950b2655f90fed976dc4f12ab84 2093 Packages
+ 32a80b9f225cf929633880213aaee4c5aaa77ac2013579fd5e65da89afbe215d 757 Packages.gz
+ e30b15f1f5dc59cfe62ebc034e6b4328538fe051c024330baf97512137cd700e 808 Packages.xz
