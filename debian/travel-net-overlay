@@ -15,7 +15,7 @@ log() { echo "travel-net-overlay: $*"; }
 
 overlay_bind() {
     local src="$1"
-    local tmpdir="/tmp/overlay-$(echo "$src" | tr '/' '_' | sed 's/^_//')"
+    local tmpdir="/run/overlay-$(echo "$src" | tr '/' '_' | sed 's/^_//')"
 
     # Already mounted — nothing to do
     if mountpoint -q "$src" 2>/dev/null; then
@@ -106,7 +106,7 @@ overlay_bind "/var/log"
 overlay_bind "/var/tmp"
 
 # === DNS resolver ===
-RESOLV_TMPDIR="/tmp/overlay-etc_resolv_conf"
+RESOLV_TMPDIR="/run/overlay-etc_resolv_conf"
 if [ ! -d "$RESOLV_TMPDIR" ]; then
     mkdir -p "$RESOLV_TMPDIR" 2>/dev/null || { log "WARN: cannot create resolv tmpdir"; exit 0; }
 fi

@@ -23,7 +23,7 @@ const OVERLAY_DIRS: &[&str] = &[
 
 fn tmpdir_for(path: &str) -> String {
     format!(
-        "/tmp/overlay-{}",
+        "/run/overlay-{}",
         path.replace('/', "_").trim_start_matches('_')
     )
 }
@@ -94,16 +94,6 @@ fn remount_rw() -> Result<(), String> {
         return Err(format!("mount remount,rw / failed: {stderr}"));
     }
     Ok(())
-}
-
-/// Pre-create ALL overlay tmpdirs on ext4 so the overlay script finds them
-/// at boot when rootfs is ro and mkdir would fail.
-fn precreate_tmpdirs() {
-    for dir in OVERLAY_DIRS {
-        let tmpdir = tmpdir_for(dir);
-        let _ = std::fs::create_dir_all(&tmpdir);
-    }
-    let _ = std::fs::create_dir_all("/tmp/overlay-etc_resolv_conf");
 }
 
 // ── Public API ───────────────────────────────────────────────────────────
@@ -199,9 +189,6 @@ pub fn make_readonly() -> Result<(), String> {
     // Persist current config to ext4 so it survives reboot
     persist_config();
     persist_nm_connections();
-
-    // Pre-create tmpdirs on ext4 for overlay script at boot
-    precreate_tmpdirs();
 
     // Sync
     let _ = Command::new("sync").output();
