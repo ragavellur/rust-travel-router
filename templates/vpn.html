@@ -89,7 +89,8 @@ function renderStatus(st) {
     statusRow('WireGuard', connectedDot(wgUp) + ' ' + wgLine) +
     statusRow('Tailscale', connectedDot(st.tailscale && tsState === 'Running') + ' ' + tsLine) +
     statusRow('VPN tools installed', ((inst.wg && inst.wg_quick) ? 'WireGuard ✓' : 'WireGuard ✗') + ' · ' + (inst.tailscale ? 'Tailscale ✓' : 'Tailscale ✗')) +
-    statusRow('Kill switch', (st.kill_switch ? '<span class="status-value-warn">ON — traffic blocked until the VPN is connected</span>' : '<span class="status-value-ok">off</span>'));
+    statusRow('Kill switch', (st.kill_switch ? '<span class="status-value-warn">ON — traffic blocked until the VPN is connected</span>' : '<span class="status-value-ok">off</span>')) +
+    (st.last_error ? '<tr><td colspan="2" style="color:#ff4444;font-size:0.85rem;padding:0.5rem;">⚠ ' + escapeHtml(st.last_error) + '</td></tr>' : '');
 }
 
 function statusRow(label, value, cls) {
@@ -356,8 +357,11 @@ async function saveConfig() {
     });
     const data = await r.json();
     if (data.success) {
-      showMessage('VPN settings saved and applied. Check the status above.', 'success');
-      loadStatus();
+      showMessage('VPN settings saved. Applying in the background — status will refresh in 5 seconds...', 'success');
+      setTimeout(() => {
+        loadStatus();
+        showMessage('VPN settings saved and applied. Check the status above.', 'success');
+      }, 5000);
     } else {
       showMessage(data.error || 'Save failed', 'error');
     }

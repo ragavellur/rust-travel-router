@@ -488,8 +488,14 @@ async fn api_reset(
 
 fn apply_vpn_in_background(cfg: Config) {
     tokio::task::spawn_blocking(move || {
-        if let Err(e) = vpn::apply(&cfg) {
-            tracing::error!("VPN apply failed: {e}");
+        match vpn::apply(&cfg) {
+            Ok(()) => {
+                *vpn::LAST_VPN_ERROR.lock().unwrap() = String::new();
+            }
+            Err(e) => {
+                tracing::error!("VPN apply failed: {e}");
+                *vpn::LAST_VPN_ERROR.lock().unwrap() = e;
+            }
         }
     });
 }

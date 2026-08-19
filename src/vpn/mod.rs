@@ -4,8 +4,17 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::process::Command;
+use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 pub const VPN_NFT_FILE: &str = "/etc/travel-net/travel-vpn.nft";
+
+pub static LAST_VPN_ERROR: Mutex<String> = Mutex::new(String::new());
+
+pub fn last_vpn_error() -> String {
+    LAST_VPN_ERROR.lock().unwrap().clone()
+}
 
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct InstalledStatus {
@@ -37,6 +46,7 @@ pub struct VpnStatus {
     pub tailscale: TailscaleStatus,
     pub wireguard: WireguardStatus,
     pub kill_switch: bool,
+    pub last_error: String,
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
@@ -169,6 +179,7 @@ pub fn status(cfg: &Config) -> VpnStatus {
         tailscale,
         wireguard,
         kill_switch: kill_switch_active(),
+        last_error: last_vpn_error(),
     }
 }
 
@@ -445,6 +456,21 @@ pub fn tailscale_up(cfg: &Config) -> Result<(), String> {
     }
     let _ = run("systemctl", &["enable", "tailscaled"]);
     let _ = run("systemctl", &["start", "tailscaled"]);
+
+    // Wait for tailscaled to be ready (up to 10 seconds)
+    let mut ready = false;
+    for _ in 0..10 {
+        thread::sleep(Duration::from_secs(1));
+        if run("tailscale", &["status", "--json"]).is_ok() {
+            ready = true;
+            break;
+        }
+    }
+    if !ready {
+        // tailscaled may still be starting; try anyway but warn
+        *LAST_VPN_ERROR.lock().unwrap() = "tailscaled may not be fully ready yet".into();
+    }
+
     let mut args: Vec<String> = vec!["up".into()];
     if !cfg.vpn.ts_auth_key.is_empty() {
         args.push(format!("--authkey={}", cfg.vpn.ts_auth_key));
@@ -469,7 +495,16 @@ pub fn tailscale_up(cfg: &Config) -> Result<(), String> {
             }
         }
     }
-    run("tailscale", &args.iter().map(|s| s.as_str()).collect::<Vec<_>>()).map(|_| ())
+    let result = run("tailscale", &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+    match &result {
+        Ok(_) => {
+            *LAST_VPN_ERROR.lock().unwrap() = String::new();
+        }
+        Err(e) => {
+            *LAST_VPN_ERROR.lock().unwrap() = e.clone();
+        }
+    }
+    result.map(|_| ())
 }
 
 pub fn tailscale_down() -> Result<(), String> {
