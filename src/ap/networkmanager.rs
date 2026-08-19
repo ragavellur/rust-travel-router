@@ -18,21 +18,48 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
     };
 
     // Create virtual AP interface if it doesn't exist
-    let check = Command::new("iw")
-        .args(["dev"])
-        .output()
-        .map_err(|e| format!("iw error: {e}"))?;
-    let output = String::from_utf8_lossy(&check.stdout);
-    if !output.contains(&format!("Interface {iface}")) {
-        let result = Command::new("iw")
-            .args(["phy", "phy0", "interface", "add", iface, "type", "managed"])
+    // Retry up to 3 times — WiFi phy may not be initialized yet at boot
+    let mut created = false;
+    for attempt in 1..=3 {
+        let check = Command::new("iw")
+            .args(["dev"])
             .output()
-            .map_err(|e| format!("iw add failed: {e}"))?;
-        if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            return Err(format!("Failed to create {iface}: {stderr}"));
+            .map_err(|e| format!("iw error: {e}"))?;
+        let output = String::from_utf8_lossy(&check.stdout);
+        if output.contains(&format!("Interface {iface}")) {
+            created = true;
+            break;
         }
-        tracing::info!("Created AP interface {iface}");
+        let phy = match crate::ap::interface::find_first_phy() {
+            Some(p) => p,
+            None => {
+                tracing::warn!("No WiFi phy device found (attempt {attempt}/3), waiting...");
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                continue;
+            }
+        };
+        let result = Command::new("iw")
+            .args(["phy", &phy, "interface", "add", iface, "type", "managed"])
+            .output();
+        match result {
+            Ok(out) if out.status.success() => {
+                tracing::info!("Created AP interface {iface} on {phy}");
+                created = true;
+                break;
+            }
+            Ok(out) => {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                tracing::warn!("Failed to create {iface} (attempt {attempt}/3): {stderr}");
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+            Err(e) => {
+                tracing::warn!("iw command failed (attempt {attempt}/3): {e}");
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        }
+    }
+    if !created {
+        return Err(format!("Failed to create {iface} after 3 attempts"));
     }
 
     // Assign IP and bring up

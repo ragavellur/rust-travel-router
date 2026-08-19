@@ -4,6 +4,21 @@ use std::process::Command;
 
 const NM_UNMANAGED_CONF: &str = "/etc/NetworkManager/conf.d/98-travel-net-unmanaged.conf";
 
+/// Find the first available phy device name (e.g. "phy0", "phy1").
+pub fn find_first_phy() -> Option<String> {
+    let output = Command::new("iw")
+        .args(["phy"])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        if let Some(name) = line.strip_prefix("Wiphy ") {
+            return Some(name.trim().to_string());
+        }
+    }
+    None
+}
+
 fn nm_mark_unmanaged(iface: &str) {
     if !Path::new("/usr/bin/nmcli").exists() {
         return;
@@ -31,14 +46,17 @@ pub async fn create_ap_interface(cfg: &Config) -> Result<(), String> {
         return Ok(());
     }
 
+    // Find phy device dynamically — don't hardcode phy0
+    let phy = find_first_phy().ok_or("No WiFi phy device found")?;
+
     // Try to create virtual interface
     let result = Command::new("iw")
-        .args(["phy", "phy0", "interface", "add", iface, "type", "__ap"])
+        .args(["phy", &phy, "interface", "add", iface, "type", "__ap"])
         .output();
 
     match result {
         Ok(out) if out.status.success() => {
-            tracing::info!("Created AP interface {iface}");
+            tracing::info!("Created AP interface {iface} on {phy}");
             Ok(())
         }
         Ok(out) => {
@@ -47,10 +65,10 @@ pub async fn create_ap_interface(cfg: &Config) -> Result<(), String> {
             if stderr.contains("Invalid argument") || stderr.contains("Not supported") {
                 tracing::warn!("type __ap failed (unsupported driver), trying type managed");
                 Command::new("iw")
-                    .args(["phy", "phy0", "interface", "add", iface, "type", "managed"])
+                    .args(["phy", &phy, "interface", "add", iface, "type", "managed"])
                     .output()
                     .map_err(|e| format!("iw managed add error: {e}"))?;
-                tracing::info!("Created AP interface {iface} with type managed");
+                tracing::info!("Created AP interface {iface} with type managed on {phy}");
                 Ok(())
             } else {
                 Err(format!("Failed to create AP interface: {stderr}"))
