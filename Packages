@@ -1,14 +1,14 @@
 Package: travel-net
-Version: 0.2.15-1
+Version: 0.2.16-1
 Architecture: amd64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: network-manager, wpasupplicant, nftables, iw, wireguard-tools
 Recommends: ntpdate
-Filename: ./travel-net_0.2.15-1_amd64.deb
-Size: 1251224
-MD5sum: ff4b3f74037b654cde86b5190c1e1156
-SHA1: 695e9830cbfceb53ad00efc495de985dfc0883d4
-SHA256: c1be269cbcc2d544395615574e48e1c2369faff7739a9bbffa22a89b08f43cb7
+Filename: ./travel-net_0.2.16-1_amd64.deb
+Size: 1253032
+MD5sum: 28fd48f527bc8c8aeb28289252a42bfe
+SHA1: c7177fc1671f6c8fffd3ee77f5c24b5a59383fb8
+SHA256: 62ff5f980ca0f7ae510a7bfc9d6db0213b5f6cd2a02006f0e4af3898064b0c73
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -18,16 +18,16 @@ Description: Travel NAT Router with web UI
  Inspired by the ESP32 NAT Router.
 
 Package: travel-net
-Version: 0.2.15-1
+Version: 0.2.16-1
 Architecture: arm64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: network-manager, wpasupplicant, nftables, iw, wireguard-tools
 Recommends: ntpdate
-Filename: ./travel-net_0.2.15-1_arm64.deb
-Size: 1201688
-MD5sum: 4abcf398feafb09df16c9874a4b44d1c
-SHA1: dd425073afad36271434ba9cb62b4730bdb84147
-SHA256: 6933c98cf9476b9e3a1f7a64e6e38cf3d4d7dc7d1070fa2d2226bca9f2a921f1
+Filename: ./travel-net_0.2.16-1_arm64.deb
+Size: 1203520
+MD5sum: af46bf1533f1ab23149d5efce994fc8c
+SHA1: 9ece35a0824ff7e17ed72f63ac32313ecf17deea
+SHA256: 40c72ccf482ff14d22be0c03d4ead4bc3e8a8c91f2225d30bb5751fe9d063d30
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -37,16 +37,16 @@ Description: Travel NAT Router with web UI
  Inspired by the ESP32 NAT Router.
 
 Package: travel-net
-Version: 0.2.15-1
+Version: 0.2.16-1
 Architecture: armhf
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools
 Recommends: ntpdate
-Filename: ./travel-net_0.2.15-1_armhf.deb
-Size: 1146380
-MD5sum: d3b11cb8fb067daaa2975a6d90ac4dad
-SHA1: 5a3ea805a6902ee4f1c8cfade83ab73406b1fc4f
-SHA256: 628918f6951f4807eef879c04be106cbcb8bc833d9ec5afb74e16db0ce3268ec
+Filename: ./travel-net_0.2.16-1_armhf.deb
+Size: 1147658
+MD5sum: 54cd1c8f05a52476bdceea77ac8d1188
+SHA1: f2b1e73672b1ef0e5eb5d1d3056efa64f165d7e5
+SHA256: 7b42a1f8e6ce6bc53dfa0867642cb08bd2e2d3fa7c950fe62dff5960e1e29088
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
