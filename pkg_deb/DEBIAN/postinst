@@ -93,8 +93,15 @@ with open('$CONFIG_FILE', 'w') as f: json.dump(c, f, indent=2)
 
 case "$1" in
     configure)
-        # Clean corrupted apt cache files (device-specific issue)
-        find /var/lib/apt/lists/ -name '*Packages*' -size 0 -delete 2>/dev/null || true
+        # Fix clock FIRST — wrong clock breaks SSL which breaks all apt operations
+        timedatectl set-ntp true 2>/dev/null || true
+        /usr/sbin/travel-net-timesync 2>/dev/null || true
+
+        # Aggressively clean ALL corrupted apt cache files
+        rm -f /var/lib/apt/lists/*Translation* 2>/dev/null || true
+        rm -f /var/lib/apt/lists/*Packages* 2>/dev/null || true
+        find /var/lib/apt/lists/ -size 0 -delete 2>/dev/null || true
+        apt-get clean 2>/dev/null || true
 
         # Fix corrupted dpkg status file
         if ! dpkg --audit 2>/dev/null; then
@@ -111,7 +118,8 @@ case "$1" in
             cp /usr/share/travel-net/config.default.json /etc/travel-net/config.json 2>/dev/null || true
         fi
 
-        # Install ntpdate for time sync at boot
+        # Install ntpdate for robust time sync at boot
+        DEBIAN_FRONTEND=noninteractive apt-get update --allow-releaseinfo-change 2>/dev/null || true
         DEBIAN_FRONTEND=noninteractive apt-get install -y ntpdate 2>/dev/null || true
 
         BACKEND=$(detect_backend)
