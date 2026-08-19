@@ -1,31 +1,13 @@
 Package: travel-net
-Version: 0.2.4-1
-Architecture: armhf
-Maintainer: Travel Net Dev <dev@travel-net.local>
-Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools
-Filename: ./travel-net_0.2.4-1_armhf.deb
-Size: 1147564
-MD5sum: d5c2d590098da29badb481737626dfc3
-SHA1: 48b69afa1b95022d96c559fbd6328b2595c87d9b
-SHA256: 493fa41f68dfab9a62cbd70f7a49b9a16cfada5499f804d7831db0a39ee6e9cc
-Section: net
-Priority: optional
-Description: Travel NAT Router with web UI
- Turn any Linux SBC with WiFi into a travel NAT router.
- Features: AP+STA hybrid mode, web UI, WiFi scanning,
- VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
- Inspired by the ESP32 NAT Router.
-
-Package: travel-net
-Version: 0.2.4-1
+Version: 0.2.5-1
 Architecture: arm64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: network-manager, wpasupplicant, iw, wireguard-tools
-Filename: ./travel-net_0.2.4-1_arm64.deb
-Size: 1203324
-MD5sum: 9049d0e4af366fae2b7888239c2055e7
-SHA1: 4ed056bc99bef71699cf2935a212e72c82f3165b
-SHA256: 6bee25d2a51e57c7ad1f0d5ff2e38f60707bcb2f16077f4ea87c7968beddb660
+Filename: ./travel-net_0.2.5-1_arm64.deb
+Size: 1203890
+MD5sum: 16c2e358f75c4ebd3c3b6da42adb9b0f
+SHA1: 708ed4abc41e4a35324c8fcbaf2719957f4e6278
+SHA256: 662a069f5e4faf801efd05d9cb7275cda1eae90b2d3c0e8414735a563189c55f
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -35,15 +17,33 @@ Description: Travel NAT Router with web UI
  Inspired by the ESP32 NAT Router.
 
 Package: travel-net
-Version: 0.2.4-1
+Version: 0.2.5-1
 Architecture: amd64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: network-manager, wpasupplicant, iw, wireguard-tools
-Filename: ./travel-net_0.2.4-1_amd64.deb
-Size: 1252700
-MD5sum: afb9b4f292a9634025977e279d707d86
-SHA1: b1206746dd8d0dee3b7e380b6d3425d2b644d710
-SHA256: 29338a8e81f5f8a59bb0e466a239a12782b109f5aef3f371b9f7eefdb0cc2b27
+Filename: ./travel-net_0.2.5-1_amd64.deb
+Size: 1253554
+MD5sum: d8e06371d6e12e8fa92f8423237249e2
+SHA1: 1a621ef9b22ed5cb1a974508bcec27cc2fb68098
+SHA256: 36fc89db04ea7bc8c42e05f2e6f985eb080e98b268f6bd145ebbd7331d9ea263
+Section: net
+Priority: optional
+Description: Travel NAT Router with web UI
+ Turn any Linux SBC with WiFi into a travel NAT router.
+ Features: AP+STA hybrid mode, web UI, WiFi scanning,
+ VPN (WireGuard + Tailscale), hostapd/dnsmasq/nftables management.
+ Inspired by the ESP32 NAT Router.
+
+Package: travel-net
+Version: 0.2.5-1
+Architecture: armhf
+Maintainer: Travel Net Dev <dev@travel-net.local>
+Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools
+Filename: ./travel-net_0.2.5-1_armhf.deb
+Size: 1147718
+MD5sum: eb8978e24c900790e4984e5a6d9e4475
+SHA1: 3aca876feac5f82fe8a9b11d48fb15080636d768
+SHA256: c016dd75c19335f402fcc45f476ea93eb53c7ce3c6e67ee60449a236607efa37
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
