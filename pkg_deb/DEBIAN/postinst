@@ -127,30 +127,10 @@ case "$1" in
             echo "travel-net: read-only rootfs disabled (rootfs stays writable)"
         fi
 
-        # Install Tailscale (best-effort)
-        if ! command -v tailscale >/dev/null 2>&1; then
-            if command -v curl >/dev/null 2>&1; then
-                TS_OS=debian
-                DISTRO=$(grep -E '^ID=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')
-                case "$DISTRO" in
-                    raspbian) TS_OS=raspbian ;;
-                    ubuntu) TS_OS=ubuntu ;;
-                esac
-                TS_VER=$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')
-                [ -n "$TS_VER" ] || TS_VER=stable
-                echo "travel-net: installing Tailscale ($TS_OS/$TS_VER) via apt repo..."
-                mkdir -p --mode=0755 /usr/share/keyrings
-                curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg || true
-                curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list || true
-                chmod 0644 /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
-                apt-get update || true
-                apt-get install -y tailscale || true
-            fi
-        fi
-        systemctl disable tailscaled 2>/dev/null || true
-
+        # Enable and start travel-net
         systemctl daemon-reload
         systemctl enable travel-net.service
+        systemctl enable travel-net-tailscale.service 2>/dev/null || true
         systemctl restart travel-net.service || true
 
         echo ""

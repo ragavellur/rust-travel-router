@@ -1,0 +1,45 @@
+#!/bin/sh
+# Install Tailscale (best-effort). Runs once at first boot via systemd.
+set -e
+
+MARKER="/var/lib/travel-net/.tailscale-installed"
+mkdir -p /var/lib/travel-net
+
+# Skip if already installed
+if [ -f "$MARKER" ]; then
+    exit 0
+fi
+
+# Skip if tailscale already available
+if command -v tailscale >/dev/null 2>&1; then
+    touch "$MARKER"
+    exit 0
+fi
+
+if ! command -v curl >/dev/null 2>&1; then
+    echo "travel-net-tailscale: curl not found, skipping"
+    exit 0
+fi
+
+TS_OS=debian
+DISTRO=$(grep -E '^ID=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"' | tr '[:upper:]' '[:lower:]')
+case "$DISTRO" in
+    raspbian) TS_OS=raspbian ;;
+    ubuntu) TS_OS=ubuntu ;;
+esac
+TS_VER=$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')
+[ -n "$TS_VER" ] || TS_VER=stable
+
+echo "travel-net-tailscale: installing Tailscale ($TS_OS/$TS_VER)..."
+
+mkdir -p --mode=0755 /usr/share/keyrings
+curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg 2>/dev/null || exit 0
+curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list 2>/dev/null || exit 0
+chmod 0644 /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
+
+apt-get update 2>/dev/null || exit 0
+apt-get install -y tailscale 2>/dev/null || exit 0
+
+systemctl disable tailscaled 2>/dev/null || true
+touch "$MARKER"
+echo "travel-net-tailscale: done"

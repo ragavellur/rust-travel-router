@@ -39,6 +39,9 @@ EOF
     cp debian/travel-net-overlay.service pkg_deb/lib/systemd/system/travel-net-overlay.service
     cp debian/travel-net-overlay pkg_deb/usr/sbin/travel-net-overlay
     chmod 755 pkg_deb/usr/sbin/travel-net-overlay
+    cp debian/travel-net-tailscale pkg_deb/usr/sbin/travel-net-tailscale
+    chmod 755 pkg_deb/usr/sbin/travel-net-tailscale
+    cp debian/travel-net-tailscale.service pkg_deb/lib/systemd/system/travel-net-tailscale.service
     cp config/etc/travel-net/config.json pkg_deb/etc/travel-net/config.json
     dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.2.0-1_${arch}.deb"
     echo "=== $arch -> $OUT/travel-net_0.2.0-1_${arch}.deb ==="
