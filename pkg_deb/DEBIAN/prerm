@@ -11,7 +11,7 @@ case "$1" in
         systemctl stop travel-net-timesync.service 2>/dev/null || true
         systemctl disable travel-net-timesync.service 2>/dev/null || true
 
-        # Remove stale overlay/watchdog from older versions
+        # Remove stale overlay/watchdog/remount from older versions
         for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer remount-rw.service; do
             systemctl stop "$svc" 2>/dev/null || true
             systemctl disable "$svc" 2>/dev/null || true
@@ -22,7 +22,7 @@ case "$1" in
         # Remove NM override
         rm -f /etc/systemd/system/NetworkManager.service.d/override.conf 2>/dev/null || true
 
-        # Remove tmpfs entries from fstab
+        # Remove any tmpfs/ro entries from fstab (leftover from older versions)
         sed -i '/^tmpfs \/tmp /d' /etc/fstab 2>/dev/null || true
         sed -i '/^tmpfs \/var\/tmp /d' /etc/fstab 2>/dev/null || true
         sed -i '/^tmpfs \/var\/log /d' /etc/fstab 2>/dev/null || true
@@ -37,7 +37,7 @@ case "$1" in
         sed -i '/^tmpfs \/etc\/dnsmasq.d /d' /etc/fstab 2>/dev/null || true
         sed -i '/^tmpfs \/var\/lib\/dnsmasq /d' /etc/fstab 2>/dev/null || true
 
-        # Remove ro from root mount
+        # Remove ro from root mount (leftover from older versions)
         sed -i 's/,ro,/,/g; s/,ro$//; s/^ro,//' /etc/fstab 2>/dev/null || true
 
         # Reload systemd

@@ -755,18 +755,7 @@ async fn api_make_writable(
     config::save(path, &cfg).map_err(|e| {
         (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e.to_string()})))
     })?;
-    drop(cfg);
-
-    if let Err(e) = crate::system::remount::make_writable() {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e}))));
-    }
-
-    tokio::spawn(async {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        reboot::reboot().ok();
-    });
-
-    Ok(Json(serde_json::json!({"success": true, "message": "Remounting rootfs as writable. Rebooting..."})))
+    Ok(Json(serde_json::json!({"success": true, "message": "Rootfs is already writable."})))
 }
 
 async fn api_make_readonly(
@@ -776,22 +765,8 @@ async fn api_make_readonly(
     if !is_authed(&state, &headers).await {
         return Err(unauthorized_json());
     }
-    let mut cfg = state.config.write().await;
-    cfg.rootfs_readonly = true;
-    let path = std::path::Path::new("/etc/travel-net/config.json");
-    config::save(path, &cfg).map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e.to_string()})))
-    })?;
-    drop(cfg);
-
     if let Err(e) = crate::system::remount::make_readonly() {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": e}))));
+        return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": e}))));
     }
-
-    tokio::spawn(async {
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        reboot::reboot().ok();
-    });
-
-    Ok(Json(serde_json::json!({"success": true, "message": "Locking filesystem as read-only. Rebooting..."})))
+    Ok(Json(serde_json::json!({"success": true, "message": "Read-only rootfs enabled."})))
 }

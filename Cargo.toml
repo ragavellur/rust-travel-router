@@ -1,6 +1,6 @@
 [package]
 name = "travel-net"
-version = "0.2.20"
+version = "0.2.21"
 edition = "2021"
 description = "Travel NAT Router with web UI — turn any Linux SBC into a WiFi NAT router"
 

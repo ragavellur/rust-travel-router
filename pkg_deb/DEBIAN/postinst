@@ -1,127 +1,12 @@
 #!/bin/sh
 set -e
 
-setup_ro_rootfs() {
-    echo ""
-    echo "============================================"
-    echo "  Read-Only Rootfs Setup"
-    echo "============================================"
-    echo ""
-    echo "This protects your SD/eMMC from corruption"
-    echo "during sudden power loss."
-    echo ""
-    printf "Enable read-only rootfs? [Y/n] "
-    read -r answer </dev/tty 2>/dev/null || answer="y"
-    case "$answer" in
-        [nN]|[nN][oO])
-            echo "Skipping read-only rootfs setup."
-            return 1
-            ;;
-        *)
-            echo "Setting up read-only rootfs..."
-            return 0
-            ;;
-    esac
-}
-
 detect_backend() {
     if command -v nmcli >/dev/null 2>&1 && command -v NetworkManager >/dev/null 2>&1; then
         echo "networkmanager"
     else
         echo "hostapd"
     fi
-}
-
-add_fstab_tmpfs_nm() {
-    local fstab="/etc/fstab"
-    # Ensure mount point directories exist before adding fstab entries
-    mkdir -p /tmp /var/tmp /var/log /var/run /var/lock
-    mkdir -p /var/lib/NetworkManager
-    mkdir -p /etc/NetworkManager/system-connections
-    mkdir -p /etc/NetworkManager/dnsmasq-shared.d
-    mkdir -p /etc/NetworkManager/conf.d
-    local entries="
-tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0
-tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0
-tmpfs /var/log tmpfs defaults,nosuid,nodev,size=50M 0 0
-tmpfs /var/run tmpfs defaults,nosuid,nodev,size=10M 0 0
-tmpfs /var/lock tmpfs defaults,nosuid,nodev,size=5M 0 0
-tmpfs /var/lib/NetworkManager tmpfs defaults,nosuid,nodev,size=20M,mode=755 0 0
-tmpfs /etc/NetworkManager/system-connections tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
-tmpfs /etc/NetworkManager/dnsmasq-shared.d tmpfs defaults,nosuid,nodev,size=1M,mode=755 0 0
-tmpfs /etc/NetworkManager/conf.d tmpfs defaults,nosuid,nodev,size=1M,mode=755 0 0"
-    echo "$entries" | while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        # Extract mount point for dedup check
-        mnt=$(echo "$line" | awk '{print $2}')
-        if ! grep -q "^tmpfs $mnt " "$fstab" 2>/dev/null; then
-            echo "$line" >> "$fstab"
-            echo "travel-net: added tmpfs $mnt to fstab"
-        fi
-    done
-}
-
-add_fstab_tmpfs_hostapd() {
-    local fstab="/etc/fstab"
-    # Ensure mount point directories exist before adding fstab entries
-    mkdir -p /tmp /var/tmp /var/log /var/run /var/lock
-    mkdir -p /etc/hostapd /etc/wpa_supplicant /etc/dnsmasq.d /var/lib/dnsmasq
-    local entries="
-tmpfs /tmp tmpfs defaults,nosuid,nodev,size=100M 0 0
-tmpfs /var/tmp tmpfs defaults,nosuid,nodev,size=50M 0 0
-tmpfs /var/log tmpfs defaults,nosuid,nodev,size=50M 0 0
-tmpfs /var/run tmpfs defaults,nosuid,nodev,size=10M 0 0
-tmpfs /var/lock tmpfs defaults,nosuid,nodev,size=5M 0 0
-tmpfs /etc/hostapd tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
-tmpfs /etc/wpa_supplicant tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
-tmpfs /etc/dnsmasq.d tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0
-tmpfs /var/lib/dnsmasq tmpfs defaults,nosuid,nodev,size=5M,mode=755 0 0"
-    echo "$entries" | while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        mnt=$(echo "$line" | awk '{print $2}')
-        if ! grep -q "^tmpfs $mnt " "$fstab" 2>/dev/null; then
-            echo "$line" >> "$fstab"
-            echo "travel-net: added tmpfs $mnt to fstab"
-        fi
-    done
-}
-
-set_rootfs_ro() {
-    local fstab="/etc/fstab"
-    # Add ,ro to the root mount UUID/dev line if not already present
-    if grep -q "^UUID=.* / ext4 " "$fstab"; then
-        if ! grep "^UUID=.* / ext4 " "$fstab" | grep -q ",ro"; then
-            sed -i 's/^\(UUID=[^ ]* \/ ext4 [^ ]*\)/\1,ro/' "$fstab"
-            echo "travel-net: set rootfs ro in fstab"
-        fi
-    elif grep -q "^\/dev\/.* / ext4 " "$fstab"; then
-        if ! grep "^/dev/.* / ext4 " "$fstab" | grep -q ",ro"; then
-            sed -i 's/^\(\/dev\/[^ ]* \/ ext4 [^ ]*\)/\1,ro/' "$fstab"
-            echo "travel-net: set rootfs ro in fstab"
-        fi
-    fi
-}
-
-remove_fstab_ro() {
-    local fstab="/etc/fstab"
-    sed -i 's/,ro,/,/g; s/,ro$//; s/^ro,//' "$fstab"
-}
-
-remove_fstab_tmpfs() {
-    local fstab="/etc/fstab"
-    sed -i '/^tmpfs \/tmp /d' "$fstab"
-    sed -i '/^tmpfs \/var\/tmp /d' "$fstab"
-    sed -i '/^tmpfs \/var\/log /d' "$fstab"
-    sed -i '/^tmpfs \/var\/run /d' "$fstab"
-    sed -i '/^tmpfs \/var\/lock /d' "$fstab"
-    sed -i '/^tmpfs \/var\/lib\/NetworkManager /d' "$fstab"
-    sed -i '/^tmpfs \/etc\/NetworkManager\/system-connections /d' "$fstab"
-    sed -i '/^tmpfs \/etc\/NetworkManager\/dnsmasq-shared.d /d' "$fstab"
-    sed -i '/^tmpfs \/etc\/NetworkManager\/conf.d /d' "$fstab"
-    sed -i '/^tmpfs \/etc\/hostapd /d' "$fstab"
-    sed -i '/^tmpfs \/etc\/wpa_supplicant /d' "$fstab"
-    sed -i '/^tmpfs \/etc\/dnsmasq.d /d' "$fstab"
-    sed -i '/^tmpfs \/var\/lib\/dnsmasq /d' "$fstab"
 }
 
 setup_nm_backend() {
@@ -134,10 +19,6 @@ ReadWritePaths=/etc/NetworkManager/dnsmasq-shared.d
 EOF
 }
 
-setup_hostapd_backend() {
-    mkdir -p /etc/hostapd /etc/wpa_supplicant
-}
-
 cleanup_conflicting_services() {
     local backend="$1"
     echo "travel-net: cleaning up conflicting services..."
@@ -145,14 +26,8 @@ cleanup_conflicting_services() {
     systemctl stop hostapd.service 2>/dev/null || true
     systemctl disable hostapd.service 2>/dev/null || true
 
-    if [ -f /etc/systemd/system/remount-rw.service ]; then
-        systemctl stop remount-rw.service 2>/dev/null || true
-        systemctl disable remount-rw.service 2>/dev/null || true
-        rm -f /etc/systemd/system/remount-rw.service 2>/dev/null || true
-    fi
-
-    # Remove stale overlay/watchdog from older versions
-    for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer; do
+    # Remove stale services from older versions
+    for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer remount-rw.service; do
         systemctl stop "$svc" 2>/dev/null || true
         systemctl disable "$svc" 2>/dev/null || true
         rm -f "/etc/systemd/system/$svc" 2>/dev/null || true
@@ -165,40 +40,6 @@ cleanup_conflicting_services() {
     fi
 
     systemctl daemon-reload 2>/dev/null || true
-}
-
-update_config_rootfs() {
-    CONFIG_FILE="/etc/travel-net/config.json"
-    if [ -f "$CONFIG_FILE" ]; then
-        if [ "$1" = "true" ]; then
-            sed -i 's/"rootfs_readonly": *false/"rootfs_readonly": true/' "$CONFIG_FILE" 2>/dev/null || true
-        else
-            sed -i 's/"rootfs_readonly": *true/"rootfs_readonly": false/' "$CONFIG_FILE" 2>/dev/null || true
-        fi
-    fi
-}
-
-configure_volatile_storage() {
-    # journald: volatile (RAM only, no flash writes)
-    if [ -f /etc/systemd/journald.conf ]; then
-        if grep -q "^#Storage=" /etc/systemd/journald.conf; then
-            sed -i 's/^#Storage=.*/Storage=volatile/' /etc/systemd/journald.conf
-        elif grep -q "^Storage=" /etc/systemd/journald.conf; then
-            sed -i 's/^Storage=.*/Storage=volatile/' /etc/systemd/journald.conf
-        else
-            echo "Storage=volatile" >> /etc/systemd/journald.conf
-        fi
-    fi
-
-    # Disable random-seed writes (breaks on ro rootfs)
-    systemctl disable systemd-random-seed.service 2>/dev/null || true
-
-    # Fake hardware clock symlink (prevents boot blocking on no-RTC devices)
-    if [ -e /etc/fake-hwclock.data ] && [ ! -L /etc/fake-hwclock.data ]; then
-        rm -f /etc/fake-hwclock.data
-        ln -sf /tmp/fake-hwclock.data /etc/fake-hwclock.data
-        echo "travel-net: symlinked fake-hwclock.data to /tmp"
-    fi
 }
 
 case "$1" in
@@ -231,42 +72,10 @@ case "$1" in
         BACKEND=$(detect_backend)
         echo "travel-net: detected backend = $BACKEND"
 
-        # Kill conflicting services BEFORE anything else
         cleanup_conflicting_services "$BACKEND"
 
-        # Ask about RO rootfs
-        ENABLE_RO=0
-        if [ -t 0 ] || [ -t 1 ]; then
-            setup_ro_rootfs && ENABLE_RO=1
-        else
-            echo "travel-net: non-interactive install"
-            ENABLE_RO=0
-        fi
-
-        if [ "$ENABLE_RO" = "1" ]; then
-            # Add size-capped tmpfs entries to fstab
-            if [ "$BACKEND" = "networkmanager" ]; then
-                setup_nm_backend
-                add_fstab_tmpfs_nm
-            else
-                setup_hostapd_backend
-                add_fstab_tmpfs_hostapd
-            fi
-
-            # Set rootfs to ro in fstab
-            set_rootfs_ro
-
-            # Configure volatile storage (journald, random-seed, fake-hwclock)
-            configure_volatile_storage
-
-            update_config_rootfs "true"
-            echo "travel-net: read-only rootfs enabled (fstab tmpfs + remount rw/ro)"
-        else
-            # Remove any previous ro settings
-            remove_fstab_ro
-            remove_fstab_tmpfs
-            update_config_rootfs "false"
-            echo "travel-net: read-only rootfs disabled (rootfs stays writable)"
+        if [ "$BACKEND" = "networkmanager" ]; then
+            setup_nm_backend
         fi
 
         # Enable and start travel-net
