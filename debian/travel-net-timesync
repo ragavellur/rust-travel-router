@@ -1,0 +1,23 @@
+#!/bin/bash
+# travel-net-timesync: sync system clock via NTP before anything else runs.
+# Uses IP addresses directly — no DNS required.
+set -e
+
+# Try Google NTP by IP (no DNS needed)
+if command -v ntpdate >/dev/null 2>&1; then
+    ntpdate -b 216.239.35.12 2>/dev/null && echo "travel-net-timesync: synced via ntpdate (Google)" && exit 0
+    ntpdate -b 216.239.37.12 2>/dev/null && echo "travel-net-timesync: synced via ntpdate (Google)" && exit 0
+fi
+
+# Fallback: try systemd-timesyncd
+if command -v timedatectl >/dev/null 2>&1; then
+    timedatectl set-ntp true 2>/dev/null
+fi
+
+# Fallback: try ntpd pool (requires DNS, may fail)
+if command -v ntpdate >/dev/null 2>&1; then
+    ntpdate -b pool.ntp.org 2>/dev/null && echo "travel-net-timesync: synced via ntpdate (pool)" && exit 0
+fi
+
+echo "travel-net-timesync: NTP sync failed, time may be incorrect"
+exit 0

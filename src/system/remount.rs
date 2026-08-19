@@ -250,23 +250,30 @@ pub fn make_readonly() -> Result<(), String> {
         return write_result;
     }
 
-    let output = Command::new("mount")
-        .args(["-o", "remount,ro", "/"])
-        .output()
-        .map_err(|e| format!("mount remount,ro: {e}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let msg = format!("mount -o remount,ro / failed: stderr={stderr} stdout={stdout}");
-        tracing::error!("{msg}");
-        eprintln!("{msg}");
-        let fuser = Command::new("fuser").args(["-vm", "/"]).output();
-        if let Ok(out) = fuser {
-            let fuser_out = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            tracing::error!("fuser / : {fuser_out}");
+    kill_blocking_processes();
+
+    for attempt in 0..3 {
+        let output = Command::new("mount")
+            .args(["-o", "remount,ro", "/"])
+            .output()
+            .map_err(|e| format!("mount remount,ro: {e}"))?;
+        if output.status.success() {
+            break;
         }
-        restore_ro(did_rw);
-        return Err(msg);
+        if attempt < 2 {
+            tracing::warn!("mount -o remount,ro failed (attempt {}), retrying after kill", attempt + 1);
+            kill_blocking_processes();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            let fuser_out = Command::new("fuser").args(["-vm", "/"]).output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            tracing::error!("mount -o remount,ro / failed: stderr={stderr} stdout={stdout} fuser={fuser_out}");
+            restore_ro(did_rw);
+            return Err(format!("mount -o remount,ro / failed: {stderr}"));
+        }
     }
 
     let _ = Command::new("systemctl")
@@ -277,6 +284,52 @@ pub fn make_readonly() -> Result<(), String> {
     persist_nm_connections();
 
     Ok(())
+}
+
+fn kill_blocking_processes() {
+    let fuser_out = Command::new("fuser").args(["-vm", "/"]).output();
+    if let Ok(out) = fuser_out {
+        let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+        let pids: Vec<&str> = stdout
+            .lines()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if let Some(pid_str) = parts.last() {
+                    let pid = pid_str.trim_end_matches(':');
+                    if pid.chars().all(|c| c.is_ascii_digit()) && !pid.is_empty() {
+                        return Some(pid);
+                    }
+                }
+                None
+            })
+            .collect();
+
+        let my_pid = std::process::id().to_string();
+        let targets: Vec<&str> = pids.iter().filter(|p| **p != my_pid.as_str()).copied().collect();
+
+        if targets.is_empty() {
+            return;
+        }
+
+        tracing::info!("Killing {} processes blocking rootfs remount: {}", targets.len(), targets.join(", "));
+
+        let _ = Command::new("kill")
+            .args(targets.iter().flat_map(|p| ["-TERM", p]).collect::<Vec<_>>())
+            .output();
+
+        std::thread::sleep(std::time::Duration::from_secs(2));
+
+        let still_alive: Vec<String> = targets.iter().filter(|p| {
+            std::path::Path::new(&format!("/proc/{}", p)).exists()
+        }).map(|p| p.to_string()).collect();
+
+        if !still_alive.is_empty() {
+            let _ = Command::new("kill")
+                .args(still_alive.iter().flat_map(|p| ["-9", p.as_str()]).collect::<Vec<_>>())
+                .output();
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        }
+    }
 }
 
 fn persist_dir(src: &str) -> Result<(), String> {

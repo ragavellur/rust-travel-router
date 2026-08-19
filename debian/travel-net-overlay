@@ -70,6 +70,24 @@ overlay_bind "/etc/modprobe.d"
 # === NM conf.d (not covered by system-connections) ===
 overlay_bind "/etc/NetworkManager/conf.d"
 
+# === DNS resolver (always ensure it exists with working nameservers) ===
+RESOLV_TMPDIR="/tmp/overlay-etc_resolv_conf"
+mkdir -p "$RESOLV_TMPDIR"
+if [ -f /etc/resolv.conf ] && [ ! -L /etc/resolv.conf ]; then
+    cp -a /etc/resolv.conf "$RESOLV_TMPDIR/resolv.conf" 2>/dev/null || true
+fi
+if [ ! -f "$RESOLV_TMPDIR/resolv.conf" ] || ! grep -q '^nameserver ' "$RESOLV_TMPDIR/resolv.conf" 2>/dev/null; then
+    cat > "$RESOLV_TMPDIR/resolv.conf" << 'RESOLV'
+# Default DNS — managed by travel-net overlay
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+RESOLV
+fi
+if ! mountpoint -q /etc/resolv.conf 2>/dev/null; then
+    mount --bind "$RESOLV_TMPDIR/resolv.conf" /etc/resolv.conf
+    echo "travel-net-overlay: $RESOLV_TMPDIR/resolv.conf -> /etc/resolv.conf"
+fi
+
 # === System runtime state ===
 overlay_bind "/var/lib/NetworkManager"
 overlay_bind "/var/lib/systemd"
