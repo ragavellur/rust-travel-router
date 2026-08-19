@@ -53,17 +53,17 @@ pub fn is_overlay_active(dir: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Unmount ALL overlay bind-mounts so rootfs can be remounted.
-/// This is the ONLY reliable way to make `mount -o remount,ro /` succeed.
+/// Lazy-unmount ALL overlay bind-mounts so rootfs can be remounted.
+/// `umount -l` detaches the mount immediately even if processes hold files open.
+/// The kernel cleans up references in the background.
 /// The overlay service will re-create them at next boot.
 fn unmount_all_overlays() {
-    // resolv.conf has its own special bind-mount
     if is_overlay_active("/etc/resolv.conf") {
-        let _ = Command::new("umount").arg("/etc/resolv.conf").output();
+        let _ = Command::new("umount").args(["-l", "/etc/resolv.conf"]).output();
     }
     for dir in OVERLAY_DIRS {
         if is_overlay_active(dir) {
-            let _ = Command::new("umount").arg(dir).output();
+            let _ = Command::new("umount").args(["-l", dir]).output();
         }
     }
 }
@@ -83,6 +83,7 @@ pub fn is_file_on_overlay(path: &std::path::Path) -> bool {
     false
 }
 
+/// Unmount all overlays, then remount rootfs rw.
 fn remount_rw() -> Result<(), String> {
     unmount_all_overlays();
     let output = Command::new("mount")
@@ -96,6 +97,7 @@ fn remount_rw() -> Result<(), String> {
     Ok(())
 }
 
+/// Unmount all overlays, sync, then remount rootfs ro.
 fn remount_ro() -> Result<(), String> {
     unmount_all_overlays();
     let _ = Command::new("sync").output();
@@ -108,6 +110,43 @@ fn remount_ro() -> Result<(), String> {
         return Err(format!("mount remount,ro / failed: {stderr}"));
     }
     Ok(())
+}
+
+/// Copy tmpdir content to the real ext4 directory (persist overlay to disk).
+/// Called while rootfs is rw and overlays are unmounted.
+fn persist_dir_to_disk(dir: &str) {
+    let tmpdir = tmpdir_for(dir);
+    if !std::path::Path::new(&tmpdir).exists() {
+        return;
+    }
+    // Ensure the ext4 target dir exists
+    let _ = std::fs::create_dir_all(dir);
+    // Copy tmpdir → ext4
+    if let Err(e) = std::fs::read_dir(&tmpdir) {
+        tracing::warn!("Cannot read tmpdir {tmpdir}: {e}");
+        return;
+    }
+    let cp = Command::new("cp")
+        .args(["-a", &format!("{tmpdir}/."), dir])
+        .output();
+    match cp {
+        Ok(o) if !o.status.success() => {
+            let err = String::from_utf8_lossy(&o.stderr);
+            tracing::warn!("persist cp error for {dir}: {err}");
+        }
+        Err(e) => tracing::warn!("persist cp spawn error for {dir}: {e}"),
+        _ => {}
+    }
+}
+
+/// Pre-create ALL overlay tmpdirs in /tmp so the overlay script finds them
+/// at boot when rootfs is ro and mkdir would fail.
+fn precreate_tmpdirs() {
+    for dir in OVERLAY_DIRS {
+        let tmpdir = tmpdir_for(dir);
+        let _ = std::fs::create_dir_all(&tmpdir);
+    }
+    let _ = std::fs::create_dir_all("/tmp/overlay-etc_resolv_conf");
 }
 
 pub fn safe_write(path: &std::path::Path, content: &str) -> Result<(), String> {
@@ -200,7 +239,10 @@ pub fn make_writable() -> Result<(), String> {
             if (line.starts_with("UUID=") || line.starts_with("/dev/"))
                 && line.contains(" / ext4 ")
             {
-                line.replace("ro,", "").replace(",ro,", ",").replace(",ro ", " ").replace(" ro,", " ,")
+                line.replace("ro,", "")
+                    .replace(",ro,", ",")
+                    .replace(",ro ", " ")
+                    .replace(" ro,", " ,")
             } else {
                 line.to_string()
             }
@@ -211,15 +253,19 @@ pub fn make_writable() -> Result<(), String> {
     remount_rw()?;
     let write_result = std::fs::write("/etc/fstab", &new_fstab)
         .map_err(|e| format!("Write fstab: {e}"));
-
     if write_result.is_err() {
         let _ = remount_ro();
-        return write_result;
     }
-
-    Ok(())
+    write_result
 }
 
+/// Lock rootfs to read-only. Flow:
+/// 1. remount_rw (unmounts all overlays, remounts rootfs rw)
+/// 2. Write fstab with ro
+/// 3. Persist ALL overlay content from tmpdirs to ext4
+/// 4. Pre-create ALL tmpdirs on ext4 for overlay script at boot
+/// 5. remount_ro
+/// 6. Enable overlay service for next boot
 pub fn make_readonly() -> Result<(), String> {
     let _ = Command::new("sync").output();
 
@@ -240,76 +286,116 @@ pub fn make_readonly() -> Result<(), String> {
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Step 1: Unmount all overlays, remount rootfs rw
     remount_rw()?;
-    let write_result = std::fs::write("/etc/fstab", &new_fstab)
-        .map_err(|e| format!("Write fstab: {e}"));
-    if let Err(e) = write_result {
-        let _ = remount_ro();
-        return Err(e);
+
+    // Step 2: Write fstab
+    std::fs::write("/etc/fstab", &new_fstab)
+        .map_err(|e| {
+            let _ = remount_ro();
+            format!("Write fstab: {e}")
+        })?;
+
+    // Step 3: Persist ALL overlay content to ext4 (tmpdir → real dirs)
+    for dir in OVERLAY_DIRS {
+        persist_dir_to_disk(dir);
+    }
+    // Also persist resolv.conf if it was in tmpfs
+    let resolv_tmpdir = "/tmp/overlay-etc_resolv_conf";
+    if std::path::Path::new(resolv_tmpdir).join("resolv.conf").exists() {
+        let _ = std::fs::copy(
+            format!("{resolv_tmpdir}/resolv.conf"),
+            "/etc/resolv.conf",
+        );
     }
 
+    // Step 4: Pre-create ALL tmpdirs on ext4 so overlay script finds them at boot
+    precreate_tmpdirs();
+
+    // Step 5: Sync + remount ro
+    let _ = Command::new("sync").output();
     remount_ro()?;
 
+    // Step 6: Enable overlay service for next boot
     let _ = Command::new("systemctl")
         .args(["enable", "travel-net-overlay.service"])
         .output();
 
-    persist_config();
-    persist_nm_connections();
-
-    Ok(())
-}
-
-fn persist_dir(src: &str) -> Result<(), String> {
-    let tmpdir = tmpdir_for(src);
-
-    if !is_overlay_active(src) {
-        return Ok(());
-    }
-
-    let unbind = Command::new("umount").arg(src).output();
-    if !unbind.map(|o| o.status.success()).unwrap_or(false) {
-        return Err(format!("Failed to unbind {src}"));
-    }
-
-    remount_rw()?;
-
-    let cp = Command::new("cp")
-        .args(["-a", &format!("{tmpdir}/."), src])
-        .output()
-        .map_err(|e| format!("cp: {e}"))?;
-    if !cp.status.success() {
-        let err = String::from_utf8_lossy(&cp.stderr);
-        tracing::warn!("persist cp error for {src}: {err}");
-    }
-
-    let _ = remount_ro();
-
-    let _ = Command::new("mount")
-        .args(["--bind", &tmpdir, src])
-        .output();
-
-    tracing::info!("Persisted {src} to disk");
     Ok(())
 }
 
 pub fn persist_config() {
-    if let Err(e) = persist_dir("/etc/travel-net") {
-        tracing::warn!("Failed to persist config: {e}");
+    if !is_overlay_active("/etc/travel-net") {
+        return;
     }
+    let tmpdir = tmpdir_for("/etc/travel-net");
+    let unbind = Command::new("umount").arg("/etc/travel-net").output();
+    if !unbind.map(|o| o.status.success()).unwrap_or(false) {
+        tracing::warn!("Failed to unbind /etc/travel-net for persist");
+        return;
+    }
+    let cp = Command::new("cp")
+        .args(["-a", &format!("{tmpdir}/."), "/etc/travel-net"])
+        .output();
+    if let Ok(o) = cp {
+        if !o.status.success() {
+            tracing::warn!("persist cp error: {}", String::from_utf8_lossy(&o.stderr));
+        }
+    }
+    let _ = Command::new("mount")
+        .args(["--bind", &tmpdir, "/etc/travel-net"])
+        .output();
+    tracing::info!("Persisted /etc/travel-net to disk");
 }
 
 pub fn persist_nm_connections() {
-    if let Err(e) = persist_dir("/etc/NetworkManager/system-connections") {
-        tracing::warn!("Failed to persist NM connections: {e}");
+    if !is_overlay_active("/etc/NetworkManager/system-connections") {
+        return;
     }
+    let dir = "/etc/NetworkManager/system-connections";
+    let tmpdir = tmpdir_for(dir);
+    let unbind = Command::new("umount").arg(dir).output();
+    if !unbind.map(|o| o.status.success()).unwrap_or(false) {
+        tracing::warn!("Failed to unbind {dir} for persist");
+        return;
+    }
+    let cp = Command::new("cp")
+        .args(["-a", &format!("{tmpdir}/."), dir])
+        .output();
+    if let Ok(o) = cp {
+        if !o.status.success() {
+            tracing::warn!("persist cp error: {}", String::from_utf8_lossy(&o.stderr));
+        }
+    }
+    let _ = Command::new("mount")
+        .args(["--bind", &tmpdir, dir])
+        .output();
+    tracing::info!("Persisted {dir} to disk");
 }
 
 #[allow(dead_code)]
 pub fn persist_all() {
     for dir in OVERLAY_DIRS {
-        if let Err(e) = persist_dir(dir) {
-            tracing::warn!("Failed to persist {dir}: {e}");
+        let tmpdir = tmpdir_for(dir);
+        if !is_overlay_active(dir) {
+            continue;
         }
+        let unbind = Command::new("umount").arg(dir).output();
+        if !unbind.map(|o| o.status.success()).unwrap_or(false) {
+            tracing::warn!("Failed to unbind {dir}");
+            continue;
+        }
+        let cp = Command::new("cp")
+            .args(["-a", &format!("{tmpdir}/."), dir])
+            .output();
+        if let Ok(o) = cp {
+            if !o.status.success() {
+                tracing::warn!("persist cp error for {dir}: {}", String::from_utf8_lossy(&o.stderr));
+            }
+        }
+        let _ = Command::new("mount")
+            .args(["--bind", &tmpdir, dir])
+            .output();
+        tracing::info!("Persisted {dir} to disk");
     }
 }

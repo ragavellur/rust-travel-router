@@ -2,36 +2,67 @@
 # travel-net-overlay: create writable tmpfs bind-mounts over directories
 # that the system and travel-net need to write to at runtime.
 # Rootfs stays ro — entire OS is protected from power-loss corruption.
-set -e
+#
+# CRITICAL: This script MUST NOT use 'set -e'. Every command tolerates failure.
+# If any bind-mount fails, we log and continue. NetworkManager and travel-net
+# will still start — some features may be degraded but the device stays online.
+#
+# When rootfs is ro, /tmp is also ro (same partition). Tmpdirs are pre-created
+# by make_readonly() in remount.rs BEFORE rootfs goes ro. If they don't exist
+# (e.g. manual fstab edit), we skip that overlay rather than crashing.
+
+log() { echo "travel-net-overlay: $*"; }
 
 overlay_bind() {
     local src="$1"
     local tmpdir="/tmp/overlay-$(echo "$src" | tr '/' '_' | sed 's/^_//')"
 
-    mountpoint -q "$src" 2>/dev/null && return 0
-    [ -e "$src" ] || mkdir -p "$src"
+    # Already mounted — nothing to do
+    if mountpoint -q "$src" 2>/dev/null; then
+        return 0
+    fi
 
-    mkdir -p "$tmpdir"
+    # Source dir must exist on ext4
+    if [ ! -d "$src" ]; then
+        mkdir -p "$src" 2>/dev/null || { log "SKIP $src: cannot create dir"; return 0; }
+    fi
+
+    # Tmpdir must exist (pre-created by make_readonly, or we're on rw rootfs)
+    if [ ! -d "$tmpdir" ]; then
+        mkdir -p "$tmpdir" 2>/dev/null || { log "SKIP $src: tmpdir $tmpdir not available"; return 0; }
+    fi
+
+    # Copy existing content into tmpdir (first boot: copies ext4 → tmpfs)
     cp -a "$src"/. "$tmpdir/" 2>/dev/null || true
-    mount --bind "$tmpdir" "$src"
-    echo "travel-net-overlay: $tmpdir -> $src"
+
+    # Bind-mount tmpdir over the source
+    if mount --bind "$tmpdir" "$src" 2>/dev/null; then
+        log "$tmpdir -> $src"
+    else
+        log "WARN: failed to bind $src — feature may be degraded"
+    fi
 }
 
-# Check if rootfs is actually ro — skip overlay if rootfs is rw
-ROOTFSType=$(awk '$2 == "/" {print $3}' /proc/mounts)
-if [ "$ROOTFSType" != "ext4" ] && [ "$ROOTFSType" != "ext3" ] && [ "$ROOTFSType" != "btrfs" ]; then
-    echo "travel-net-overlay: rootfs is $ROOTFSType, skipping overlay"
-    exit 0
-fi
-# Check mount options for 'ro'
-ROOTFSOpts=$(awk '$2 == "/" {print $4}' /proc/mounts)
-case "$ROOTFSOpts" in
-    *ro*) ;;
+# === Check if rootfs is actually ro — skip overlay if rootfs is rw ===
+ROOTFSType=$(awk '$2 == "/" {print $3}' /proc/mounts 2>/dev/null)
+case "$ROOTFSType" in
+    ext4|ext3|btrfs) ;;
     *)
-        echo "travel-net-overlay: rootfs is rw, skipping overlay"
+        log "rootfs type is '$ROOTFSType', skipping overlay"
         exit 0
         ;;
 esac
+
+ROOTFSOpts=$(awk '$2 == "/" {print $4}' /proc/mounts 2>/dev/null)
+case "$ROOTFSOpts" in
+    *ro*) ;;
+    *)
+        log "rootfs is rw, skipping overlay"
+        exit 0
+        ;;
+esac
+
+log "rootfs is ro, creating overlay bind-mounts..."
 
 # === travel-net config (all devices) ===
 overlay_bind "/etc/travel-net"
@@ -40,6 +71,7 @@ overlay_bind "/etc/travel-net"
 if command -v nmcli >/dev/null 2>&1 || [ -d /etc/NetworkManager ]; then
     overlay_bind "/etc/NetworkManager/system-connections"
     overlay_bind "/etc/NetworkManager/dnsmasq-shared.d"
+    overlay_bind "/etc/NetworkManager/conf.d"
 fi
 
 # === hostapd backend dirs ===
@@ -48,7 +80,7 @@ if command -v hostapd >/dev/null 2>&1 || [ -d /etc/hostapd ]; then
 fi
 
 # === wpa_supplicant config (both backends) ===
-mkdir -p /etc/wpa_supplicant
+mkdir -p /etc/wpa_supplicant 2>/dev/null || true
 overlay_bind "/etc/wpa_supplicant"
 
 # === dnsmasq config ===
@@ -67,12 +99,18 @@ overlay_bind "/usr/share/keyrings"
 overlay_bind "/etc/wireguard"
 overlay_bind "/etc/modprobe.d"
 
-# === NM conf.d (not covered by system-connections) ===
-overlay_bind "/etc/NetworkManager/conf.d"
+# === System runtime state ===
+overlay_bind "/var/lib/NetworkManager"
+overlay_bind "/var/lib/systemd"
+overlay_bind "/var/log"
+overlay_bind "/var/tmp"
 
-# === DNS resolver (always ensure it exists with working nameservers) ===
+# === DNS resolver ===
 RESOLV_TMPDIR="/tmp/overlay-etc_resolv_conf"
-mkdir -p "$RESOLV_TMPDIR"
+if [ ! -d "$RESOLV_TMPDIR" ]; then
+    mkdir -p "$RESOLV_TMPDIR" 2>/dev/null || { log "WARN: cannot create resolv tmpdir"; exit 0; }
+fi
+
 if [ -f /etc/resolv.conf ] && [ ! -L /etc/resolv.conf ]; then
     cp -a /etc/resolv.conf "$RESOLV_TMPDIR/resolv.conf" 2>/dev/null || true
 fi
@@ -84,12 +122,12 @@ nameserver 1.1.1.1
 RESOLV
 fi
 if ! mountpoint -q /etc/resolv.conf 2>/dev/null; then
-    mount --bind "$RESOLV_TMPDIR/resolv.conf" /etc/resolv.conf
-    echo "travel-net-overlay: $RESOLV_TMPDIR/resolv.conf -> /etc/resolv.conf"
+    if mount --bind "$RESOLV_TMPDIR/resolv.conf" /etc/resolv.conf 2>/dev/null; then
+        log "$RESOLV_TMPDIR/resolv.conf -> /etc/resolv.conf"
+    else
+        log "WARN: failed to bind /etc/resolv.conf"
+    fi
 fi
 
-# === System runtime state ===
-overlay_bind "/var/lib/NetworkManager"
-overlay_bind "/var/lib/systemd"
-overlay_bind "/var/log"
-overlay_bind "/var/tmp"
+log "overlay setup complete"
+exit 0
