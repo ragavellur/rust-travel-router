@@ -461,7 +461,12 @@ pub fn tailscale_up(cfg: &Config) -> Result<(), String> {
     let mut ready = false;
     for _ in 0..10 {
         thread::sleep(Duration::from_secs(1));
-        if run("tailscale", &["status", "--json"]).is_ok() {
+        if Command::new("env")
+            .args(["TS_AUTH_ONCE=true", "tailscale", "status", "--json"])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
             ready = true;
             break;
         }
@@ -495,7 +500,18 @@ pub fn tailscale_up(cfg: &Config) -> Result<(), String> {
             }
         }
     }
-    let result = run("tailscale", &args.iter().map(|s| s.as_str()).collect::<Vec<_>>());
+    let result = Command::new("env")
+        .args(["TS_AUTH_ONCE=true", "tailscale"])
+        .args(&args)
+        .output()
+        .map(|o| {
+            if o.status.success() {
+                Ok(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                Err(String::from_utf8_lossy(&o.stderr).trim().to_string())
+            }
+        })
+        .map_err(|e| format!("tailscale: {e}"))?;
     match &result {
         Ok(_) => {
             *LAST_VPN_ERROR.lock().unwrap() = String::new();
