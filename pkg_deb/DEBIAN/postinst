@@ -60,12 +60,36 @@ setup_hostapd_backend() {
     mkdir -p /etc/hostapd /etc/wpa_supplicant
 }
 
+cleanup_conflicting_services() {
+    local backend="$1"
+    echo "travel-net: cleaning up conflicting services..."
+
+    # ALWAYS disable hostapd service — travel-net manages AP directly
+    systemctl stop hostapd.service 2>/dev/null || true
+    systemctl disable hostapd.service 2>/dev/null || true
+
+    # Remove stale remount-rw.service from older travel-net versions
+    if [ -f /etc/systemd/system/remount-rw.service ]; then
+        systemctl stop remount-rw.service 2>/dev/null || true
+        systemctl disable remount-rw.service 2>/dev/null || true
+        rm -f /etc/systemd/system/remount-rw.service 2>/dev/null || true
+    fi
+
+    if [ "$backend" = "networkmanager" ]; then
+        # On NM devices, NM manages wpa_supplicant internally.
+        # The standalone wpa_supplicant.service grabs the WiFi interface
+        # before NM does, breaking both STA and AP.
+        systemctl stop wpa_supplicant.service 2>/dev/null || true
+        systemctl disable wpa_supplicant.service 2>/dev/null || true
+    fi
+
+    systemctl daemon-reload 2>/dev/null || true
+}
+
 update_config_rootfs() {
-    # Update rootfs_readonly in config.json
     CONFIG_FILE="/etc/travel-net/config.json"
     if [ -f "$CONFIG_FILE" ]; then
         if [ "$1" = "true" ]; then
-            # Use python if available, else sed
             if command -v python3 >/dev/null 2>&1; then
                 python3 -c "
 import json
@@ -125,13 +149,18 @@ case "$1" in
         BACKEND=$(detect_backend)
         echo "travel-net: detected backend = $BACKEND"
 
+        # Kill conflicting services BEFORE anything else — this is what
+        # breaks networking. hostapd grabs wlan, wpa_supplicant grabs wlan,
+        # remount-rw hangs. Kill them all first.
+        cleanup_conflicting_services "$BACKEND"
+
         # Ask about RO rootfs
         ENABLE_RO=0
         if [ -t 0 ] || [ -t 1 ]; then
             setup_ro_rootfs && ENABLE_RO=1
         else
-            echo "travel-net: non-interactive install, enabling RO rootfs by default"
-            ENABLE_RO=1
+            echo "travel-net: non-interactive install"
+            ENABLE_RO=0
         fi
 
         if [ "$ENABLE_RO" = "1" ]; then

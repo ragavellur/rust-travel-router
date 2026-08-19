@@ -8,15 +8,29 @@ case "$1" in
         systemctl disable travel-net.service 2>/dev/null || true
         systemctl stop travel-net-overlay.service 2>/dev/null || true
         systemctl disable travel-net-overlay.service 2>/dev/null || true
+        systemctl stop travel-net-tailscale.service 2>/dev/null || true
+        systemctl disable travel-net-tailscale.service 2>/dev/null || true
+        systemctl stop travel-net-timesync.service 2>/dev/null || true
+        systemctl disable travel-net-timesync.service 2>/dev/null || true
+
+        # Remove stale remount-rw.service from older versions
+        if [ -f /etc/systemd/system/remount-rw.service ]; then
+            systemctl stop remount-rw.service 2>/dev/null || true
+            systemctl disable remount-rw.service 2>/dev/null || true
+            rm -f /etc/systemd/system/remount-rw.service 2>/dev/null || true
+        fi
 
         # Unmount all overlay bind-mounts
         for dir in \
             /etc/travel-net \
             /etc/NetworkManager/system-connections \
             /etc/NetworkManager/dnsmasq-shared.d \
+            /etc/NetworkManager/conf.d \
             /etc/hostapd \
             /etc/wpa_supplicant \
             /etc/dnsmasq.d \
+            /etc/wireguard \
+            /etc/modprobe.d \
             /var/lib/dpkg \
             /var/cache/apt \
             /var/lib/apt \
@@ -26,11 +40,16 @@ case "$1" in
             /var/lib/systemd \
             /var/log \
             /var/tmp; do
-            mountpoint -q "$dir" 2>/dev/null && umount "$dir" 2>/dev/null || true
+            umount -l "$dir" 2>/dev/null || true
         done
+
+        # Unmount resolv.conf if it's an overlay bind
+        umount -l /etc/resolv.conf 2>/dev/null || true
 
         # Remove NM override
         rm -f /etc/systemd/system/NetworkManager.service.d/override.conf 2>/dev/null || true
+
+        # Reload systemd
         systemctl daemon-reload 2>/dev/null || true
         ;;
 esac
