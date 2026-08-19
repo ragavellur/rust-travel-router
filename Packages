@@ -4,10 +4,10 @@ Architecture: armhf
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: hostapd, dnsmasq, wpasupplicant, nftables, iw, wireguard-tools
 Filename: ./travel-net_0.2.2-1_armhf.deb
-Size: 1145122
-MD5sum: 20314eff9be0d326381b817a1c18ed58
-SHA1: f0c33198a12936347581f2598f8210b2a869a4e6
-SHA256: 2e023778a146e1a277c57435a71772376218e7211ad1ba788fe485b305a9697f
+Size: 1145186
+MD5sum: e20531606409cae75b2eb55fd98b562a
+SHA1: 1d164989f6e1877b9f5371cc228fbe0716d892ba
+SHA256: 95b12e5eff048bfde686caec6b85148defd83fbbda3ea2b264e87d7d1bc0a82a
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -22,10 +22,10 @@ Architecture: amd64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: network-manager, wpasupplicant, iw, wireguard-tools
 Filename: ./travel-net_0.2.2-1_amd64.deb
-Size: 1248876
-MD5sum: e52c72d543f8a45ea373fbb2833b5ef5
-SHA1: b21d92601b5d09161d0d5aa39de8508782a03aa9
-SHA256: 5c692186b9f2d3059b092472af791abbbb3c2cceb80d22faf2c20637c015619a
+Size: 1248948
+MD5sum: f2b6940af56651565c1cbef22b768bd3
+SHA1: 392c4a859d640cc177753f5ef2aa77cdd6f00e3d
+SHA256: 13376ef46d77662df277e3f36d0e4eeda38c6801ceea4624a203a89b8e971ca5
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
@@ -40,10 +40,10 @@ Architecture: arm64
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Depends: network-manager, wpasupplicant, iw, wireguard-tools
 Filename: ./travel-net_0.2.2-1_arm64.deb
-Size: 1199672
-MD5sum: 7edd75ab8cfb5f2123fb38c0605020b6
-SHA1: 1f14fb8c9947acd65a05e0e6eb25bc69e7b174df
-SHA256: faad1995fabb8472ee61e248b6effc7c07f74eed3bd262c395606416d47ce3c5
+Size: 1199744
+MD5sum: 4fc6d450ca019c5d59133a6680b18dbb
+SHA1: df935903d48f29fa396864158e0b2549ad57bbc6
+SHA256: be8620d9918a70d99767721da4229ab840b8e5189c27f0027780cf0c96ba9de0
 Section: net
 Priority: optional
 Description: Travel NAT Router with web UI
