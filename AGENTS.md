@@ -19,9 +19,11 @@ Breaking these rules = customers lose devices = project dies.
 - **IF corrupted**: fix clock first (`timedatectl set-ntp true`), then `dpkg --force-all --configure -a`, then `apt --fix-broken install`
 - **IF that fails**: the device needs physical recovery. Do NOT escalate to wiping status.
 
-### Rule 2: NEVER modify core system services during install
+### Rule 2: NEVER modify or remove core system services
 - postinst must ONLY: create /etc/travel-net, copy default config, enable travel-net.service
-- **NEVER**: stop, restart, reconfigure, or touch NetworkManager, systemd-networkd, wpa_supplicant
+- prerm must ONLY: stop/disable travel-net services, clean up old service files from previous versions, daemon-reload
+- **NEVER**: stop, restart, reconfigure, remove config, or touch NetworkManager, systemd-networkd, wpa_supplicant
+- **NEVER**: remove NM override, NM connection profiles, or NM config files (even in prerm/uninstall)
 - **NEVER**: modify /etc/fstab, /etc/NetworkManager/, /etc/systemd/system/
 - **NEVER**: add fstab entries, mount tmpfs, change rootfs to ro
 
