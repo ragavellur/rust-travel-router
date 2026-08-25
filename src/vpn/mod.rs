@@ -414,19 +414,36 @@ fn ts_codename() -> String {
 
 pub fn install() -> Result<Vec<String>, String> {
     let mut logs = Vec::new();
+
+    // Rule 1+3: Fix any broken dpkg state BEFORE any apt operation
+    let _ = run("sh", &["-c", "dpkg --configure -a 2>/dev/null || true"]);
+    let _ = run("sh", &["-c", "apt-get -f install -y 2>/dev/null || true"]);
+
+    // Rule 3: Verify clock before apt
+    let year_ok = run("sh", &["-c", "YEAR=$(date +%Y 2>/dev/null); [ -n \"$YEAR\" ] && [ \"$YEAR\" -ge 2024 ] 2>/dev/null"]);
+    if year_ok.is_err() {
+        return Err("System clock is wrong (year < 2024). Run 'sudo timedatectl set-ntp true' first, then try again.".into());
+    }
+
+    // Clear stale apt lists
     let _ = run("sh", &["-c", "rm -f /var/lib/apt/lists/*Packages*"]);
+
+    // Install wireguard-tools
     let wg = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "wireguard-tools"]);
     logs.push(format!(
         "wireguard-tools: {}",
-        wg.map(|_| "installed".to_string()).unwrap_or_else(|_| "install failed".into())
+        wg.map(|_| "installed".to_string()).unwrap_or_else(|e| format!("install failed: {e}"))
     ));
+
     if which("tailscale") {
         logs.push("Tailscale is already installed".into());
         return Ok(logs);
     }
+
     let os = ts_os();
     let codename = ts_codename();
     logs.push(format!("Installing Tailscale via apt repo (pkgs.tailscale.com/stable/{os}/{codename})"));
+
     let _ = Command::new("mkdir").args(["-p", "--mode=0755", "/usr/share/keyrings"]).status();
     let _ = run("sh", &["-c", &format!(
         "curl -fsSL https://pkgs.tailscale.com/stable/{os}/{codename}.noarmor.gpg -o /usr/share/keyrings/tailscale-archive-keyring.gpg"
@@ -436,14 +453,18 @@ pub fn install() -> Result<Vec<String>, String> {
     )]);
     let _ = run("chmod", &["0644", "/etc/apt/sources.list.d/tailscale.list"]);
     let _ = run("sh", &["-c", "rm -f /var/lib/apt/lists/*Packages*"]);
+
     let up = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "update"]);
     if up.is_err() {
         return Err(format!("apt-get update failed: {}", up.unwrap_err()));
     }
-    let inst = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "tailscale"]);
+
+    // Pin to 1.76.* — last version compatible with kernel 5.15 (arm64)
+    let inst = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "tailscale=1.76.*"]);
     if inst.is_err() {
         return Err(format!("tailscale install failed: {}", inst.unwrap_err()));
     }
+
     let _ = run("systemctl", &["disable", "tailscaled"]);
     logs.push("Tailscale installed (service stays disabled until you enable a VPN)".into());
     Ok(logs)
