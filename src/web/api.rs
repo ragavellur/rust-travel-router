@@ -14,6 +14,22 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use std::process::Command;
+
+fn clock_is_ok() -> bool {
+    let year: i32 = String::from_utf8(
+        Command::new("date")
+            .arg("+%Y")
+            .output()
+            .map(|o| o.stdout)
+            .unwrap_or_default(),
+    )
+    .unwrap_or_default()
+    .trim()
+    .parse()
+    .unwrap_or(0);
+    year >= 2024
+}
 
 fn unauthorized_json() -> (StatusCode, Json<serde_json::Value>) {
     (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Unauthorized"})))
@@ -44,6 +60,7 @@ struct StatusResponse {
     hostname: String,
     interfaces: Vec<interfaces::InterfaceInfo>,
     vpn: vpn::VpnStatus,
+    clock_ok: bool,
 }
 
 #[derive(Serialize)]
@@ -162,6 +179,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/system/rootfs-status", get(api_rootfs_status))
         .route("/api/system/make-writable", post(api_make_writable))
         .route("/api/system/make-readonly", post(api_make_readonly))
+        .route("/api/system/sync-clock", post(api_sync_clock))
 }
 
 async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderMap) -> Json<StatusResponse> {
@@ -192,6 +210,7 @@ async fn api_status(State(state): State<AppState>, _headers: axum::http::HeaderM
         hostname: cfg.hostname.clone(),
         interfaces: ifaces,
         vpn: vpn::status(&cfg),
+        clock_ok: clock_is_ok(),
     })
 }
 
@@ -769,4 +788,24 @@ async fn api_make_readonly(
         return Err((StatusCode::BAD_REQUEST, Json(serde_json::json!({"success": false, "error": e}))));
     }
     Ok(Json(serde_json::json!({"success": true, "message": "Read-only rootfs enabled."})))
+}
+
+async fn api_sync_clock(
+    State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+    if !is_authed(&state, &headers).await {
+        return Err(unauthorized_json());
+    }
+    if clock_is_ok() {
+        return Ok(Json(serde_json::json!({"success": true, "message": "Clock is already correct."})));
+    }
+    let _ = Command::new("timedatectl")
+        .args(["set-ntp", "true"])
+        .output();
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    if clock_is_ok() {
+        return Ok(Json(serde_json::json!({"success": true, "message": "Clock synced via NTP."})));
+    }
+    Err((StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "error": "NTP sync failed. Please set the clock manually: sudo timedatectl set-time 'YYYY-MM-DD HH:MM:SS'"}))))
 }

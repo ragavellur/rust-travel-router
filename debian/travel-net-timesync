@@ -1,7 +1,6 @@
 #!/bin/bash
-# travel-net-timesync: sync system clock BEFORE anything else runs.
-# This BLOCKS boot until clock is correct. Without this, apt GPG
-# verification fails (timestamps "in the future"), corrupting dpkg status.
+# travel-net-timesync: best-effort clock sync at boot. Non-blocking.
+# If clock is wrong, boot continues — the web UI will warn the user.
 
 # Verify clock is reasonable (year >= 2024)
 check_clock() {
@@ -15,13 +14,12 @@ if check_clock; then
     exit 0
 fi
 
-echo "travel-net-timesync: clock wrong ($(date)), syncing..."
+echo "travel-net-timesync: clock wrong ($(date)), attempting sync..."
 
-# Method 1: systemd-timesyncd
+# Method 1: systemd-timesyncd (wait up to 10s)
 if command -v timedatectl >/dev/null 2>&1; then
     timedatectl set-ntp true 2>/dev/null || true
-    echo "travel-net-timesync: waiting for systemd-timesyncd..."
-    for i in $(seq 1 30); do
+    for i in $(seq 1 10); do
         if check_clock; then
             echo "travel-net-timesync: synced via systemd-timesyncd ($(date))"
             exit 0
@@ -32,18 +30,10 @@ fi
 
 # Method 2: ntpdate by IP (no DNS needed)
 if command -v ntpdate >/dev/null 2>&1; then
-    echo "travel-net-timesync: trying ntpdate..."
     ntpdate -b 216.239.35.12 2>/dev/null && check_clock && echo "travel-net-timesync: synced via ntpdate ($(date))" && exit 0
     ntpdate -b 216.239.37.12 2>/dev/null && check_clock && echo "travel-net-timesync: synced via ntpdate ($(date))" && exit 0
-    ntpdate -b 216.239.35.4 2>/dev/null && check_clock && echo "travel-net-timesync: synced via ntpdate ($(date))" && exit 0
 fi
 
-# Last resort: log warning but DON'T let it block forever
-# NEVER try apt-get install here — if clock is wrong, apt will corrupt dpkg status (SAFETY RULE #3)
-if check_clock; then
-    echo "travel-net-timesync: synced ($(date))"
-    exit 0
-fi
-
-echo "travel-net-timesync: WARNING - could not sync clock after 30s. apt operations may fail."
+# Clock still wrong — don't block. Web UI will warn the user.
+echo "travel-net-timesync: WARNING clock still wrong ($(date)) — user must fix via web UI or command line"
 exit 0
