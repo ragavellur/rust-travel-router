@@ -1,0 +1,29 @@
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+table inet nat {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        oifname "wlan0" masquerade
+    }
+
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+    }
+}
+
+table inet filter {
+    chain forward {
+        type filter hook forward priority filter; policy accept;
+        iifname "wlan1" oifname "wlan0" accept
+        iifname "wlan0" oifname "wlan1" ct state related,established accept
+    }
+
+    chain input {
+        type filter hook input priority filter; policy accept;
+        iifname "wlan1" tcp dport 80 accept
+        iifname "wlan1" udp dport 53 accept
+        iifname "wlan1" udp dport 67 accept
+    }
+}

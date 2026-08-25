@@ -25,10 +25,12 @@ Breaking these rules = customers lose devices = project dies.
 - **NEVER**: modify /etc/fstab, /etc/NetworkManager/, /etc/systemd/system/
 - **NEVER**: add fstab entries, mount tmpfs, change rootfs to ro
 
-### Rule 3: NEVER run apt without clock verification
+### Rule 3: NEVER run apt or tell user to run apt without clock verification
 - Wrong clock → GPG signature failure → corrupted apt lists → corrupted dpkg status → device bricked
+- **NEVER** tell the user to run `apt-get update`, `apt-get install`, or any apt command without first verifying `date +%Y` >= 2024
+- **NEVER** include `apt-get update` in cleanup/uninstall instructions without clock check first
 - Every script that runs apt MUST verify: `date +%Y` returns >= 2024 BEFORE any apt operation
-- The timesync service MUST block boot until clock is correct, not just "try and hope"
+- The postinst MUST verify clock before running apt-get update/install
 
 ### Rule 4: Power-loss safety
 - Config writes: atomic (write to tmp file, then rename) — already done via safe_write()

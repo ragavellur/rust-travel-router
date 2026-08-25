@@ -3,10 +3,18 @@ set -e
 case "$1" in
     configure)
         mkdir -p /etc/travel-net
-        # Ensure package lists are fresh, then install all runtime deps
-        apt-get update -qq 2>/dev/null || true
-        DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            network-manager wpasupplicant iw nftables ntpdate 2>/dev/null || true
+
+        # Verify clock before any apt operation (Rule 3)
+        YEAR=$(date +%Y 2>/dev/null)
+        if [ -z "$YEAR" ] || [ "$YEAR" -lt 2024 ] 2>/dev/null; then
+            echo "travel-net: clock wrong (year=$YEAR), skipping dependency install."
+            echo "travel-net: Run 'sudo timedatectl set-ntp true' then 'sudo apt-get update && sudo dpkg --configure -a'"
+        else
+            apt-get update -qq 2>/dev/null || true
+            DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                network-manager wpasupplicant iw nftables ntpdate 2>/dev/null || true
+        fi
+
         systemctl enable travel-net.service 2>/dev/null || true
         echo ""
         echo "travel-net: Web UI at http://192.168.4.1"
