@@ -5,11 +5,11 @@ Section: net
 Installed-Size: 1200
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Architecture: amd64
-Filename: travel-net_0.2.31-1_amd64.deb
-Size: 1245688
-MD5Sum: 758a5a802d81c253b763e6445cdbd2e6
-SHA1: c8a227bfd0323c27ff92f3941017c8c664456d57
-SHA256: 2b28867d17211964e9599112c838fc8e099a90173cc78807fb5fc83c04ab3f12
+Filename: travel-net_0.2.32-1_amd64.deb
+Size: 1244810
+MD5Sum: ffa56c9aa5e15bec7c341ed5fafc2c45
+SHA1: 3716f54eb927a6d654d60e7473a288953611221d
+SHA256: 745616e74e90c75ed33c85323124df8055af8970e668c67fc6a345587665d9a3
 Homepage: https://github.com/ragavellur/rust-travel-router
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
@@ -20,11 +20,11 @@ Section: net
 Installed-Size: 1200
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Architecture: arm64
-Filename: travel-net_0.2.31-1_arm64.deb
-Size: 1195966
-MD5Sum: 814c41bc610dda7b04de616cbea067c6
-SHA1: 8b347f83a07d27fa796a47a24064b273d09640d5
-SHA256: db527c18882d1c97a8572e4fa3fd8d8cd0befd5bc517fdcc5e14285d11118f20
+Filename: travel-net_0.2.32-1_arm64.deb
+Size: 1195998
+MD5Sum: 7d5d9839658c3960dee32e08bdaa73e0
+SHA1: 03a7444b6166a0e50d28df2a6a6aae19d3948aff
+SHA256: 3b5e1d524668d8b28ff2ea137fed8b5dca446d5078dffce4ad29479d0c6d793b
 Homepage: https://github.com/ragavellur/rust-travel-router
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
@@ -35,11 +35,11 @@ Section: net
 Installed-Size: 1200
 Maintainer: Travel Net Dev <dev@travel-net.local>
 Architecture: armhf
-Filename: travel-net_0.2.31-1_armhf.deb
-Size: 1140680
-MD5Sum: b666390abef17184c26aebb07bab832d
-SHA1: 4ca163ed53b33ed99b01091caf012d466ac596b8
-SHA256: 2ec80b072a6f8440158a8b41314cfcb81f3074cfa921ebe7ec6977e59e7eb2b4
+Filename: travel-net_0.2.32-1_armhf.deb
+Size: 1141066
+MD5Sum: 853222bccd2a7774803f3595d8fb0393
+SHA1: 0a07d9ed8be3f6d4fdcbfe59f9dd23acf42d061b
+SHA256: 9a58e0a5c2d068b23dd3ea0771e5006d1986b64a81eaeb0920cbe930efe0176b
 Homepage: https://github.com/ragavellur/rust-travel-router
 Description: Travel NAT Router with web UI
  Turn any Linux SBC with WiFi into a travel NAT router.
