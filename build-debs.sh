@@ -24,7 +24,7 @@ Package: travel-net
 Version: 0.2.22-1
 Architecture: ${arch}
 Depends: ${deps}
-Recommends: ntpdate, nftables, wireguard-tools
+Recommends: ntpdate, wireguard-tools
 Priority: optional
 Section: net
 Maintainer: Travel Net Dev <dev@travel-net.local>
@@ -49,9 +49,9 @@ EOF
 }
 
 # hostapd backend devices (NanoPi, RPi): brcmfmac/armhf
-build_arch armv7-unknown-linux-gnueabihf armhf "hostapd, dnsmasq, wpasupplicant, iw"
+build_arch armv7-unknown-linux-gnueabihf armhf "hostapd, dnsmasq, wpasupplicant, iw, nftables"
 # NetworkManager backend devices (Cubie A5E/A7A, RPi 4/5, laptops)
-build_arch aarch64-unknown-linux-gnu arm64 "network-manager, wpasupplicant, iw"
-build_arch x86_64-unknown-linux-gnu amd64 "network-manager, wpasupplicant, iw"
+build_arch aarch64-unknown-linux-gnu arm64 "network-manager, wpasupplicant, iw, nftables"
+build_arch x86_64-unknown-linux-gnu amd64 "network-manager, wpasupplicant, iw, nftables"
 
 echo "=== Done. Debs in $OUT ==="
