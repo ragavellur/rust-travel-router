@@ -1,92 +1,14 @@
 #!/bin/sh
 set -e
-
-detect_backend() {
-    if command -v nmcli >/dev/null 2>&1 && command -v NetworkManager >/dev/null 2>&1; then
-        echo "networkmanager"
-    else
-        echo "hostapd"
-    fi
-}
-
-setup_nm_backend() {
-    mkdir -p /etc/systemd/system/NetworkManager.service.d
-    cat > /etc/systemd/system/NetworkManager.service.d/override.conf << 'EOF'
-[Service]
-ReadWritePaths=/etc/NetworkManager/system-connections
-ReadWritePaths=/var/lib/NetworkManager
-ReadWritePaths=/etc/NetworkManager/dnsmasq-shared.d
-EOF
-}
-
-cleanup_conflicting_services() {
-    local backend="$1"
-    echo "travel-net: cleaning up conflicting services..."
-
-    systemctl stop hostapd.service 2>/dev/null || true
-    systemctl disable hostapd.service 2>/dev/null || true
-
-    # Remove stale services from older versions
-    for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer remount-rw.service; do
-        systemctl stop "$svc" 2>/dev/null || true
-        systemctl disable "$svc" 2>/dev/null || true
-        rm -f "/etc/systemd/system/$svc" 2>/dev/null || true
-        rm -f "/etc/systemd/system/multi-user.target.wants/$svc" 2>/dev/null || true
-    done
-
-    if [ "$backend" = "networkmanager" ]; then
-        systemctl stop wpa_supplicant.service 2>/dev/null || true
-        systemctl disable wpa_supplicant.service 2>/dev/null || true
-    fi
-
-    systemctl daemon-reload 2>/dev/null || true
-}
-
 case "$1" in
     configure)
-        # Fix clock FIRST — wrong clock breaks SSL which breaks all apt operations
-        timedatectl set-ntp true 2>/dev/null || true
-        /usr/sbin/travel-net-timesync 2>/dev/null || true
-
-        # Aggressively clean ALL corrupted apt cache files
-        rm -f /var/lib/apt/lists/*Translation* 2>/dev/null || true
-        rm -f /var/lib/apt/lists/*Packages* 2>/dev/null || true
-        find /var/lib/apt/lists/ -size 0 -delete 2>/dev/null || true
-        apt-get clean 2>/dev/null || true
-
-        # Fix corrupted dpkg status file
-        if ! dpkg --audit 2>/dev/null; then
-            echo "travel-net: fixing corrupted dpkg status file..."
-            if [ -f /var/lib/dpkg/status-old ]; then
-                cp /var/lib/dpkg/status-old /var/lib/dpkg/status
-            fi
-            dpkg --configure -a 2>/dev/null || true
-        fi
-
         mkdir -p /etc/travel-net
-
         if [ ! -f /etc/travel-net/config.json ]; then
-            cp /usr/share/travel-net/config.default.json /etc/travel-net/config.json 2>/dev/null || true
+            cp /usr/share/travel-net/config.default.json /etc/travel-net/config.json
         fi
-
-        BACKEND=$(detect_backend)
-        echo "travel-net: detected backend = $BACKEND"
-
-        cleanup_conflicting_services "$BACKEND"
-
-        if [ "$BACKEND" = "networkmanager" ]; then
-            setup_nm_backend
-        fi
-
-        # Enable and start travel-net
-        systemctl daemon-reload
-        systemctl enable travel-net.service
-        systemctl enable travel-net-tailscale.service 2>/dev/null || true
-        systemctl enable travel-net-timesync.service 2>/dev/null || true
-        systemctl restart travel-net.service || true
-
+        systemctl enable travel-net.service 2>/dev/null || true
         echo ""
-        echo "travel-net: Web UI available at http://192.168.4.1"
-        echo "travel-net: Connect to AP SSID 'Travel-Net' (password: travelnet)"
+        echo "travel-net: Web UI at http://192.168.4.1"
+        echo "travel-net: AP SSID 'Travel-Net' (password: travelnet)"
         ;;
 esac
