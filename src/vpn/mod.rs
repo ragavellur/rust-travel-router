@@ -49,8 +49,10 @@ pub struct VpnStatus {
 }
 
 fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
+    use std::process::Stdio;
     let out = Command::new(cmd)
         .args(args)
+        .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("{cmd}: {e}"))?;
     if out.status.success() {

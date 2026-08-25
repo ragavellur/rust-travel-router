@@ -8,6 +8,7 @@
 - [Architecture](#architecture)
 - [Hardware Requirements](#hardware-requirements)
 - [Installation](#installation)
+- [Uninstall](#uninstall)
 - [Configuration](#configuration)
 - [VPN (WireGuard & Tailscale)](#vpn-wireguard--tailscale)
 - [Usage](#usage)
@@ -93,48 +94,94 @@ Requirements:
 
 ## Installation
 
-### Quick install (APT, recommended)
+### Fresh install (arm64 — Cubie A5E/A7A, RPi 4/5)
+
+```bash
+# 1. Sync clock first (prevents apt corruption on devices without RTC)
+sudo timedatectl set-ntp true
+sleep 10
+
+# 2. Download and install (one command)
+cd /tmp && wget https://ragavellur.github.io/rust-travel-router/travel-net_0.2.30-1_arm64.deb && sudo dpkg -i ./travel-net_0.2.30-1_arm64.deb
+
+# 3. Reboot
+sudo reboot
+```
+
+After reboot:
+1. Connect to WiFi SSID **Travel-Net** (password: `travelnet`)
+2. Open `http://192.168.4.1/` — the web dashboard shows status
+3. Open `http://192.168.4.1/vpn` to configure VPN (Tailscale or WireGuard)
+
+### Fresh install (armhf — NanoPi NEO Air, RPi 2/3/Zero 2)
+
+```bash
+cd /tmp && wget https://ragavellur.github.io/rust-travel-router/travel-net_0.2.30-1_armhf.deb && sudo dpkg -i ./travel-net_0.2.30-1_armhf.deb && sudo reboot
+```
+
+### Fresh install (amd64 — x86-64 laptops)
+
+```bash
+cd /tmp && wget https://ragavellur.github.io/rust-travel-router/travel-net_0.2.30-1_amd64.deb && sudo dpkg -i ./travel-net_0.2.30-1_amd64.deb && sudo reboot
+```
+
+### APT repository install
 
 ```bash
 # 1. Add the repository
 echo "deb [trusted=yes] https://ragavellur.github.io/rust-travel-router/ ./" | \
   sudo tee /etc/apt/sources.list.d/travel-net.list
 
-# 2. Fix any corrupted apt cache (common on older devices)
-sudo rm -f /var/lib/apt/lists/*Packages*
-
-# 3. Install
-sudo apt-get update --allow-releaseinfo-change
-sudo apt-get install -y wireguard-tools
+# 2. Install
+sudo apt-get update
 sudo apt-get install -y travel-net
-
-# 4. When prompted "Enable read-only rootfs? [Y/n]" — press Y
+sudo reboot
 ```
 
-> **Multi-arch systems** (e.g. 32-bit Raspberry Pi OS): check `dpkg --print-architecture`,
-> then pin the repo to your arch:
+> **Multi-arch systems** (e.g. 32-bit Raspberry Pi OS): pin the repo to your arch:
 > ```bash
-> # armhf (32-bit Pi, NanoPi)
 > echo "deb [trusted=yes arch=armhf] https://ragavellur.github.io/rust-travel-router/ ./" | \
 >   sudo tee /etc/apt/sources.list.d/travel-net.list
 > ```
 
-### Via .deb package
+## Uninstall
 
-Download from [releases](https://github.com/ragavellur/rust-travel-router/releases):
+### Clean uninstall (one command)
 
 ```bash
-wget https://ragavellur.github.io/rust-travel-router/travel-net_0.2.1-1_arm64.deb
-sudo dpkg -i travel-net_0.2.1-1_arm64.deb
-# Press Y when prompted "Enable read-only rootfs?"
+sudo dpkg -r travel-net && sudo reboot
 ```
 
-### First boot
+This stops all services, removes binaries, and cleans up. The `prerm` script handles everything.
 
-After reboot:
-1. Connect to WiFi SSID **Travel-Net** (password: `travelnet`)
-2. Open `http://192.168.4.1/setup` — the setup wizard walks you through WiFi, AP, and password
-3. Open `http://192.168.4.1/vpn` to configure VPN (Tailscale or WireGuard)
+### Complete uninstall (remove everything including config)
+
+```bash
+# 1. Remove the package
+sudo dpkg -r travel-net
+
+# 2. Remove config and data
+sudo rm -rf /etc/travel-net
+sudo rm -rf /var/lib/travel-net
+
+# 3. Remove NM hotspot profile (if it exists)
+sudo nmcli connection delete travel-net-hotspot 2>/dev/null; true
+
+# 4. Remove APT repo (if added)
+sudo rm -f /etc/apt/sources.list.d/travel-net.list
+
+# 5. Reboot
+sudo reboot
+```
+
+### Remove Tailscale (if installed via VPN page)
+
+```bash
+sudo apt-get remove -y tailscale
+sudo rm -f /etc/apt/sources.list.d/tailscale.list
+sudo rm -f /usr/share/keyrings/tailscale-archive-keyring.gpg
+sudo reboot
+```
 
 ## Configuration
 
@@ -156,7 +203,6 @@ sudo systemctl restart travel-net
 | `ap_interface` | `wlan1` | Interface for AP mode |
 | `sta_interface` | `wlan0` | Interface for STA mode |
 | `web_password` | `""` | Web UI password (empty = no auth) |
-| `rootfs_readonly` | `true` | Read-only root filesystem (toggle from setup wizard) |
 
 ## VPN (WireGuard & Tailscale)
 
@@ -221,82 +267,12 @@ All API endpoints return JSON:
 travel-net --help
 ```
 
-## Uninstall
-
-### Complete uninstall (tested)
-
-```bash
-# 1. Stop and disable all services
-sudo systemctl stop travel-net 2>/dev/null; true
-sudo systemctl disable travel-net 2>/dev/null; true
-sudo systemctl stop travel-net-overlay 2>/dev/null; true
-sudo systemctl disable travel-net-overlay 2>/dev/null; true
-sudo systemctl stop travel-net-tailscale 2>/dev/null; true
-sudo systemctl disable travel-net-tailscale 2>/dev/null; true
-
-# 2. Unmount all overlay bind-mounts (if ro rootfs is active)
-for m in /etc/travel-net /etc/NetworkManager/system-connections \
-  /etc/NetworkManager/dnsmasq-shared.d /etc/hostapd /etc/wpa_supplicant \
-  /etc/dnsmasq.d /var/lib/dpkg /var/cache/apt /var/lib/apt \
-  /var/lib/NetworkManager /var/lib/systemd /var/log /var/tmp \
-  /etc/apt/sources.list.d /usr/share/keyrings; do
-  sudo umount "$m" 2>/dev/null; true
-done
-
-# 3. Make rootfs writable and purge the package
-sudo mount -o remount,rw /
-sudo dpkg --purge travel-net 2>/dev/null; true
-
-# 4. Remove leftover config and services
-sudo rm -rf /etc/travel-net
-sudo rm -f /lib/systemd/system/travel-net.service
-sudo rm -f /lib/systemd/system/travel-net-overlay.service
-sudo rm -f /lib/systemd/system/travel-net-tailscale.service
-sudo rm -f /usr/sbin/travel-net
-sudo rm -f /usr/sbin/travel-net-overlay
-sudo rm -f /usr/sbin/travel-net-tailscale
-sudo systemctl daemon-reload
-
-# 5. Remove APT repo
-sudo rm -f /etc/apt/sources.list.d/travel-net.list
-sudo rm -f /var/lib/apt/lists/*Packages*
-
-# 6. Remove NM overrides
-sudo rm -f /etc/systemd/system/NetworkManager.service.d/override.conf
-sudo rm -f /etc/NetworkManager/conf.d/90-no-periodic-scan.conf
-
-# 7. Remove NM hotspot profile
-sudo nmcli connection delete travel-net-hotspot 2>/dev/null; true
-
-# 8. Remove IP forwarding sysctl
-sudo rm -f /etc/sysctl.d/99-travel-net.conf
-
-# 9. Reboot
-sudo reboot
-```
-
-### APT install (simple)
-
-```bash
-sudo systemctl stop travel-net
-sudo apt-get remove --purge -y travel-net
-sudo reboot
-```
-
 ## Building from Source
 
 ### Prerequisites
 
-- Rust 1.75+ with `armv7-unknown-linux-gnueabihf` target (for cross-compilation)
+- Rust 1.75+ with cross-compilation targets
 - [cargo-zigbuild](https://github.com/benesch/cargo-zigbuild) (for cross-compilation)
-
-### Native Build
-
-```bash
-git clone https://github.com/ragavellur/rust-travel-router.git
-cd rust-travel-router
-cargo build --release
-```
 
 ### Cross-compilation
 
@@ -318,19 +294,13 @@ cargo zigbuild --release --target aarch64-unknown-linux-gnu
 cargo zigbuild --release --target x86_64-unknown-linux-gnu
 ```
 
-### Build .deb package
-
-On a Debian system with `dpkg-dev`:
+### Build all .deb packages
 
 ```bash
-make deb
+./build-debs.sh
 ```
 
-Or manually (cross-compile):
-
-```bash
-./cross-build.sh
-```
+Produces `.deb` files in `target/debs/` for all three architectures.
 
 ## Development
 
@@ -339,17 +309,11 @@ Or manually (cross-compile):
 cargo run -- --config config/etc/travel-net/config.json
 ```
 
-The `config.json` is pre-configured for a local test environment. Adjust interfaces as needed.
-
 ## Optional: Read-Only Root Filesystem
 
-Protect the SD card/eMMC from corruption when power is pulled abruptly. **Skip this section if you prefer a writable rootfs.** The main deployment guide above (steps 1-11) works on both rw and ro — this just locks it down.
-
-**Prerequisite:** Complete steps 1-12 from the deployment guide first (travel-net must be running).
+Protect the SD card/eMMC from corruption when power is pulled abruptly. **Skip this section if you prefer a writable rootfs.**
 
 ```bash
-# === LOCK ROOTFS READ-ONLY ===
-
 # 1. Edit /etc/fstab — change the rootfs line from:
 #      UUID=... / ext4 defaults,noatime 0 1
 #    to:
@@ -362,14 +326,7 @@ sudo nano /etc/fstab
 #     tmpfs   /var/tmp                   tmpfs   defaults,noatime,nosuid,nodev,mode=1777   0   0
 #     tmpfs   /var/lib/NetworkManager    tmpfs   defaults,noatime,nosuid,nodev            0   0
 
-# 3. Update NM's systemd override to add read-write paths for ro rootfs:
-sudo sed -i '/ReadWritePaths=\/etc\/NetworkManager\/system-connections/a ReadWritePaths=/var/lib/NetworkManager' \
-  /etc/systemd/system/NetworkManager.service.d/override.conf
-
-# 4. Symlink /etc/resolv.conf to systemd-resolved stub (NM can't write it on ro)
-sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf
-
-# 5. Reboot to lock
+# 3. Reboot to lock
 sudo reboot
 ```
 
@@ -377,17 +334,6 @@ After reboot, verify:
 ```bash
 cat /proc/mounts | grep ' / '          # Should show ro,noatime
 cat /proc/mounts | grep tmpfs          # Should show tmpfs mounts
-journalctl -u travel-net --no-pager -n 10  # AP should start
-host google.com 192.168.4.1            # DNS should resolve
-```
-
-### Making changes later
-
-```bash
-sudo mount -o remount,rw /     # unlock (may fail if services hold files open)
-# ... make edits or install packages ...
-sudo mount -o remount,ro /     # re-lock (may fail if services hold files open)
-sudo reboot                    # guaranteed clean ro boot
 ```
 
 ## License
