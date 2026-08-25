@@ -1,26 +1,20 @@
 #!/bin/sh
 # Install Tailscale (best-effort). Ordered AFTER travel-net-timesync.service.
 # Waits for clock to be correct before any apt operation.
-# Wrong clock = GPG signature failure = corrupted apt lists = corrupted dpkg status = device bricked.
 set -e
 
 MARKER="/var/lib/travel-net/.tailscale-installed"
 mkdir -p /var/lib/travel-net
 
-# Skip if already installed
 if [ -f "$MARKER" ]; then
     exit 0
 fi
 
-# Skip if tailscale already available
 if command -v tailscale >/dev/null 2>&1; then
     touch "$MARKER"
     exit 0
 fi
 
-# Wait for clock to be correct (up to 60 seconds).
-# Timesync runs before this service but may not have finished yet on first boot
-# (no network available). This loop handles that gracefully.
 check_clock() {
     YEAR=$(date +%Y 2>/dev/null)
     [ -n "$YEAR" ] && [ "$YEAR" -ge 2024 ] 2>/dev/null
@@ -38,7 +32,7 @@ while [ "$WAITED" -lt 60 ]; do
 done
 
 if ! check_clock; then
-    echo "travel-net-tailscale: clock still wrong after 60s, cannot install (would corrupt apt). Will retry on next boot."
+    echo "travel-net-tailscale: clock still wrong after 60s, cannot install. Will retry on next boot."
     exit 0
 fi
 
@@ -47,9 +41,6 @@ if ! command -v curl >/dev/null 2>&1; then
     exit 0
 fi
 
-# Pin Tailscale to 1.76.x — last version known compatible with kernel 5.15 (arm64).
-# Newer versions (1.84+) use Go 1.24+ which generates ARM64 code requiring
-# kernel features not available on 5.15, causing SIGSEGV.
 TS_PIN="1.76.*"
 
 TS_OS=debian
@@ -63,6 +54,10 @@ TS_VER=$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2 
 
 echo "travel-net-tailscale: installing Tailscale ($TS_OS/$TS_VER, pinned to $TS_PIN)..."
 
+# Fix any broken dpkg state BEFORE any apt operation
+dpkg --configure -a 2>/dev/null || true
+apt-get -f install -y 2>/dev/null || true
+
 mkdir -p --mode=0755 /usr/share/keyrings
 curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.noarmor.gpg" -o /usr/share/keyrings/tailscale-archive-keyring.gpg 2>/dev/null || exit 0
 curl -fsSL "https://pkgs.tailscale.com/stable/$TS_OS/$TS_VER.tailscale-keyring.list" -o /etc/apt/sources.list.d/tailscale.list 2>/dev/null || exit 0
@@ -71,13 +66,11 @@ chmod 0644 /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
 rm -f /var/lib/apt/lists/*Packages*
 DEBIAN_FRONTEND=noninteractive apt-get update 2>/dev/null || exit 0
 
-# Try to install pinned version. If unavailable, skip (safe default).
-DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale="$TS_PIN" 2>/dev/null || {
-    echo "travel-net-tailscale: tailscale $TS_PIN unavailable in repo, skipping"
+DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale="$TS_PIN" 2>&1 || {
+    echo "travel-net-tailscale: tailscale install failed, will retry on next boot"
     exit 0
 }
 
-# Verify the install actually works before marking as done.
 if command -v tailscaled >/dev/null 2>&1; then
     if tailscaled --version >/dev/null 2>&1; then
         systemctl disable tailscaled 2>/dev/null || true
@@ -89,5 +82,5 @@ if command -v tailscaled >/dev/null 2>&1; then
         touch "$MARKER"
     fi
 else
-    echo "travel-net-tailscale: tailscale install failed, skipping (will retry on next boot)"
+    echo "travel-net-tailscale: tailscale binary not found after install, will retry on next boot"
 fi

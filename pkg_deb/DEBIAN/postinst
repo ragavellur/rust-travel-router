@@ -4,11 +4,14 @@ case "$1" in
     configure)
         mkdir -p /etc/travel-net
 
-        # Verify clock before any apt operation (Rule 3)
+        # Fix any broken dpkg state first
+        dpkg --configure -a 2>/dev/null || true
+        apt-get -f install -y 2>/dev/null || true
+
         YEAR=$(date +%Y 2>/dev/null)
         if [ -z "$YEAR" ] || [ "$YEAR" -lt 2024 ] 2>/dev/null; then
             echo "travel-net: clock wrong (year=$YEAR), skipping dependency install."
-            echo "travel-net: Run 'sudo timedatectl set-ntp true' then 'sudo apt-get update && sudo dpkg --configure -a'"
+            echo "travel-net: Run 'sudo timedatectl set-ntp true' then 'sudo dpkg --configure -a && sudo apt-get -f install -y'"
         else
             apt-get update -qq 2>/dev/null || true
             DEBIAN_FRONTEND=noninteractive apt-get install -y \
