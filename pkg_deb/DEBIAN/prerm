@@ -2,21 +2,17 @@
 set -e
 case "$1" in
     remove|purge)
-        systemctl stop travel-net.service 2>/dev/null || true
-        systemctl disable travel-net.service 2>/dev/null || true
-        systemctl stop travel-net-tailscale.service 2>/dev/null || true
-        systemctl disable travel-net-tailscale.service 2>/dev/null || true
-        systemctl stop travel-net-timesync.service 2>/dev/null || true
-        systemctl disable travel-net-timesync.service 2>/dev/null || true
-
-        for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer remount-rw.service; do
+        for svc in travel-net.service travel-net-tailscale.service travel-net-timesync.service \
+                   travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer; do
             systemctl stop "$svc" 2>/dev/null || true
             systemctl disable "$svc" 2>/dev/null || true
+        done
+
+        for svc in travel-net-overlay.service travel-net-watchdog.service travel-net-watchdog.timer remount-rw.service; do
             rm -f "/etc/systemd/system/$svc" 2>/dev/null || true
             rm -f "/etc/systemd/system/multi-user.target.wants/$svc" 2>/dev/null || true
         done
 
-        rm -f /etc/systemd/system/NetworkManager.service.d/override.conf 2>/dev/null || true
         systemctl daemon-reload 2>/dev/null || true
         ;;
 esac

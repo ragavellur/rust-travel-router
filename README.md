@@ -146,40 +146,21 @@ sudo reboot
 
 ## Uninstall
 
-### Clean uninstall (one command)
+**Important:** Before uninstalling, connect to the device via Ethernet or uplink WiFi (NOT the Travel-Net AP). Uninstalling stops the AP and drops SSH if you're connected through it.
+
+### Uninstall (one command)
 
 ```bash
 sudo dpkg -r travel-net && sudo reboot
 ```
 
-This stops all services, removes binaries, and cleans up. The `prerm` script handles everything.
+This stops all services, removes binaries, cleans up NM override, and removes stale files from old versions. The `prerm` script handles everything — no manual cleanup needed.
 
-### Complete uninstall (remove everything including config)
+If you also want to remove the config and data:
 
 ```bash
-# 1. Remove the package
 sudo dpkg -r travel-net
-
-# 2. Remove config and data
-sudo rm -rf /etc/travel-net
-sudo rm -rf /var/lib/travel-net
-
-# 3. Remove NM hotspot profile (if it exists)
-sudo nmcli connection delete travel-net-hotspot 2>/dev/null; true
-
-# 4. Remove APT repo (if added)
-sudo rm -f /etc/apt/sources.list.d/travel-net.list
-
-# 5. Reboot
-sudo reboot
-```
-
-### Remove Tailscale (if installed via VPN page)
-
-```bash
-sudo apt-get remove -y tailscale
-sudo rm -f /etc/apt/sources.list.d/tailscale.list
-sudo rm -f /usr/share/keyrings/tailscale-archive-keyring.gpg
+sudo rm -rf /etc/travel-net /var/lib/travel-net
 sudo reboot
 ```
 
