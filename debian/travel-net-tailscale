@@ -52,7 +52,7 @@ esac
 TS_VER=$(grep -E '^VERSION_CODENAME=' /etc/os-release 2>/dev/null | cut -d= -f2 | tr -d '"')
 [ -n "$TS_VER" ] || TS_VER=stable
 
-echo "travel-net-tailscale: installing Tailscale ($TS_OS/$TS_VER, pinned to $TS_PIN)..."
+echo "travel-net-tailscale: installing Tailscale ($TS_OS/$TS_VER)..."
 
 # Fix any broken dpkg state BEFORE any apt operation
 dpkg --configure -a 2>/dev/null || true
@@ -66,7 +66,7 @@ chmod 0644 /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
 rm -f /var/lib/apt/lists/*Packages*
 DEBIAN_FRONTEND=noninteractive apt-get update 2>/dev/null || exit 0
 
-DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale="$TS_PIN" 2>&1 || {
+DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale 2>&1 || {
     echo "travel-net-tailscale: tailscale install failed, will retry on next boot"
     exit 0
 }

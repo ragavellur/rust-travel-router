@@ -461,8 +461,7 @@ pub fn install() -> Result<Vec<String>, String> {
         return Err(format!("apt-get update failed: {}", up.unwrap_err()));
     }
 
-    // Pin to 1.76.* — last version compatible with kernel 5.15 (arm64)
-    let inst = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "tailscale=1.76.*"]);
+    let inst = run("env", &["DEBIAN_FRONTEND=noninteractive", "apt-get", "install", "-y", "tailscale"]);
     if inst.is_err() {
         return Err(format!("tailscale install failed: {}", inst.unwrap_err()));
     }

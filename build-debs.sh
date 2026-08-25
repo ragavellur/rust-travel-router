@@ -18,10 +18,10 @@ build_arch() {
     local recommends="$3"
     echo "=== Building $arch ($target) ==="
     "$ZIGBUILD" zigbuild --release --target "$target"
-    rm -f "$OUT/travel-net_0.2.31-1_${arch}.deb"
+    rm -f "$OUT/travel-net_0.2.32-1_${arch}.deb"
     cat > pkg_deb/DEBIAN/control <<EOF
 Package: travel-net
-Version: 0.2.31-1
+Version: 0.2.32-1
 Architecture: ${arch}
 Recommends: ${recommends}
 Priority: optional
@@ -43,8 +43,8 @@ EOF
     chmod 755 pkg_deb/usr/sbin/travel-net-timesync
     cp debian/travel-net-timesync.service pkg_deb/lib/systemd/system/travel-net-timesync.service
     cp config/etc/travel-net/config.json pkg_deb/etc/travel-net/config.json
-    dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.2.31-1_${arch}.deb"
-    echo "=== $arch -> $OUT/travel-net_0.2.31-1_${arch}.deb ==="
+    dpkg-deb -Zgzip --root-owner-group --build pkg_deb "$OUT/travel-net_0.2.32-1_${arch}.deb"
+    echo "=== $arch -> $OUT/travel-net_0.2.32-1_${arch}.deb ==="
 }
 
 # All deps installed by postinst via apt. No hard Depends.
