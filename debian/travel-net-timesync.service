@@ -3,7 +3,7 @@ Description=Sync system clock via NTP
 DefaultDependencies=no
 After=network-online.target
 Wants=network-online.target
-Before=travel-net-overlay.service travel-net.service
+Before=travel-net-overlay.service travel-net.service travel-net-tailscale.service
 
 [Service]
 Type=oneshot

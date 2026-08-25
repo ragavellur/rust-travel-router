@@ -16,6 +16,11 @@ if command -v tailscale >/dev/null 2>&1; then
     exit 0
 fi
 
+# Belt-and-suspenders: ensure clock is correct before any apt operation.
+# Wrong clock causes GPG signature failures which corrupt apt lists.
+timedatectl set-ntp true 2>/dev/null || true
+sleep 3
+
 if ! command -v curl >/dev/null 2>&1; then
     echo "travel-net-tailscale: curl not found, skipping"
     exit 0

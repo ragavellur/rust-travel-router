@@ -1,14 +1,14 @@
 [Unit]
 Description=Install Tailscale (travel-net first-boot)
-After=network-online.target
-Wants=network-online.target
+After=network-online.target travel-net-timesync.service
+Wants=network-online.target travel-net-timesync.service
 ConditionPathExists=!/var/lib/travel-net/.tailscale-installed
 
 [Service]
 Type=oneshot
 ExecStart=/usr/sbin/travel-net-tailscale
 RemainAfterExit=yes
-TimeoutStartSec=120
+TimeoutStartSec=180
 
 [Install]
 WantedBy=multi-user.target
