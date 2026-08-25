@@ -1,7 +1,7 @@
 #!/bin/sh
-# Install Tailscale (best-effort). Runs once at first boot via systemd.
-# NOTE: This service is ordered AFTER travel-net-timesync.service.
-# Clock MUST be correct before any apt operation — wrong clock = GPG failure = corrupt dpkg status.
+# Install Tailscale (best-effort). Ordered AFTER travel-net-timesync.service.
+# Waits for clock to be correct before any apt operation.
+# Wrong clock = GPG signature failure = corrupted apt lists = corrupted dpkg status = device bricked.
 set -e
 
 MARKER="/var/lib/travel-net/.tailscale-installed"
@@ -18,11 +18,27 @@ if command -v tailscale >/dev/null 2>&1; then
     exit 0
 fi
 
-# Verify clock is correct before any apt operation.
-# Wrong clock = GPG signature failure = corrupted apt lists = corrupted dpkg status = device bricked.
-YEAR=$(date +%Y 2>/dev/null)
-if [ -z "$YEAR" ] || [ "$YEAR" -lt 2024 ] 2>/dev/null; then
-    echo "travel-net-tailscale: clock wrong (year=$YEAR), cannot install (would corrupt apt). Skipping."
+# Wait for clock to be correct (up to 60 seconds).
+# Timesync runs before this service but may not have finished yet on first boot
+# (no network available). This loop handles that gracefully.
+check_clock() {
+    YEAR=$(date +%Y 2>/dev/null)
+    [ -n "$YEAR" ] && [ "$YEAR" -ge 2024 ] 2>/dev/null
+}
+
+echo "travel-net-tailscale: waiting for system clock..."
+WAITED=0
+while [ "$WAITED" -lt 60 ]; do
+    if check_clock; then
+        echo "travel-net-tailscale: clock OK after ${WAITED}s"
+        break
+    fi
+    sleep 5
+    WAITED=$((WAITED + 5))
+done
+
+if ! check_clock; then
+    echo "travel-net-tailscale: clock still wrong after 60s, cannot install (would corrupt apt). Will retry on next boot."
     exit 0
 fi
 
@@ -55,7 +71,7 @@ chmod 0644 /etc/apt/sources.list.d/tailscale.list 2>/dev/null || true
 rm -f /var/lib/apt/lists/*Packages*
 DEBIAN_FRONTEND=noninteractive apt-get update 2>/dev/null || exit 0
 
-# Try to install pinned version. If unavailable, skip entirely (safe default).
+# Try to install pinned version. If unavailable, skip (safe default).
 DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale="$TS_PIN" 2>/dev/null || {
     echo "travel-net-tailscale: tailscale $TS_PIN unavailable in repo, skipping"
     exit 0
@@ -63,7 +79,6 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y tailscale="$TS_PIN" 2>/dev/nul
 
 # Verify the install actually works before marking as done.
 if command -v tailscaled >/dev/null 2>&1; then
-    # Quick smoke test — tailscaled --version should not segfault
     if tailscaled --version >/dev/null 2>&1; then
         systemctl disable tailscaled 2>/dev/null || true
         touch "$MARKER"
@@ -74,6 +89,5 @@ if command -v tailscaled >/dev/null 2>&1; then
         touch "$MARKER"
     fi
 else
-    echo "travel-net-tailscale: tailscale install failed, skipping"
-    touch "$MARKER"
+    echo "travel-net-tailscale: tailscale install failed, skipping (will retry on next boot)"
 fi

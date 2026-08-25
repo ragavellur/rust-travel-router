@@ -1,9 +1,8 @@
 [Unit]
 Description=Sync system clock via NTP (best-effort, non-blocking)
-DefaultDependencies=no
-After=network-online.target network.target
+After=network-online.target
 Wants=network-online.target
-Before=travel-net.service travel-net-tailscale.service
+Before=travel-net-tailscale.service
 
 [Service]
 Type=oneshot

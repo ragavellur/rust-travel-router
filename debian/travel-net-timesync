@@ -1,8 +1,8 @@
 #!/bin/bash
 # travel-net-timesync: best-effort clock sync at boot. Non-blocking.
-# If clock is wrong, boot continues — the web UI will warn the user.
+# If clock is wrong, boot continues — web UI shows warning with fix button.
+# Services that need correct time (tailscale install) wait for clock on their own.
 
-# Verify clock is reasonable (year >= 2024)
 check_clock() {
     YEAR=$(date +%Y 2>/dev/null)
     [ -n "$YEAR" ] && [ "$YEAR" -ge 2024 ] 2>/dev/null
@@ -34,6 +34,6 @@ if command -v ntpdate >/dev/null 2>&1; then
     ntpdate -b 216.239.37.12 2>/dev/null && check_clock && echo "travel-net-timesync: synced via ntpdate ($(date))" && exit 0
 fi
 
-# Clock still wrong — don't block. Web UI will warn the user.
-echo "travel-net-timesync: WARNING clock still wrong ($(date)) — user must fix via web UI or command line"
+# Clock still wrong — don't block. Web UI warns the user, tailscale waits on its own.
+echo "travel-net-timesync: clock still wrong ($(date)) — will sync when network is available"
 exit 0
