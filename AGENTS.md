@@ -13,6 +13,8 @@
 These rules exist because past violations have bricked devices and forced SD card pulls.
 Breaking these rules = customers lose devices = project dies.
 
+**ALSO READ: ISSUES.md** — full tracker of every issue ever fixed. Check it before shipping any change. Every bug that was fixed MUST NOT be reintroduced.
+
 ### Rule 1: NEVER touch /var/lib/dpkg/status
 - Wiping it destroys the entire package database — NM, systemd, everything breaks
 - **NEVER**: rm, mv, truncate, or overwrite /var/lib/dpkg/status
