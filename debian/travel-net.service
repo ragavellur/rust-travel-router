@@ -1,7 +1,7 @@
 [Unit]
 Description=travel-net NAT Router
-After=network.target network-online.target travel-net-overlay.service
-Wants=network-online.target
+After=network.target network-online.target travel-net-timesync.service
+Wants=network-online.target travel-net-timesync.service
 
 [Service]
 Type=simple

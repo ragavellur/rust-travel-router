@@ -3,9 +3,6 @@ set -e
 case "$1" in
     configure)
         mkdir -p /etc/travel-net
-        if [ ! -f /etc/travel-net/config.json ]; then
-            cp /usr/share/travel-net/config.default.json /etc/travel-net/config.json
-        fi
         systemctl enable travel-net.service 2>/dev/null || true
         echo ""
         echo "travel-net: Web UI at http://192.168.4.1"

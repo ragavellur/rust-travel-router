@@ -8,6 +8,39 @@
 **APT repo**: https://ragavellur.github.io/rust-travel-router/ (gh-pages branch)
 **Sources.list**: `deb [trusted=yes] https://ragavellur.github.io/rust-travel-router/ ./`
 
+## CRITICAL SAFETY RULES — NEVER VIOLATE
+
+These rules exist because past violations have bricked devices and forced SD card pulls.
+Breaking these rules = customers lose devices = project dies.
+
+### Rule 1: NEVER touch /var/lib/dpkg/status
+- Wiping it destroys the entire package database — NM, systemd, everything breaks
+- **NEVER**: rm, mv, truncate, or overwrite /var/lib/dpkg/status
+- **IF corrupted**: fix clock first (`timedatectl set-ntp true`), then `dpkg --force-all --configure -a`, then `apt --fix-broken install`
+- **IF that fails**: the device needs physical recovery. Do NOT escalate to wiping status.
+
+### Rule 2: NEVER modify core system services during install
+- postinst must ONLY: create /etc/travel-net, copy default config, enable travel-net.service
+- **NEVER**: stop, restart, reconfigure, or touch NetworkManager, systemd-networkd, wpa_supplicant
+- **NEVER**: modify /etc/fstab, /etc/NetworkManager/, /etc/systemd/system/
+- **NEVER**: add fstab entries, mount tmpfs, change rootfs to ro
+
+### Rule 3: NEVER run apt without clock verification
+- Wrong clock → GPG signature failure → corrupted apt lists → corrupted dpkg status → device bricked
+- Every script that runs apt MUST verify: `date +%Y` returns >= 2024 BEFORE any apt operation
+- The timesync service MUST block boot until clock is correct, not just "try and hope"
+
+### Rule 4: Power-loss safety
+- Config writes: atomic (write to tmp file, then rename) — already done via safe_write()
+- Filesystem: ext4 journaling handles power loss. Never force fsck, never modify fstab
+- Rootfs: always read-write. RO rootfs deferred to initramfs design (future)
+
+### Rule 5: Recovery before progress
+- Before ANY device change: "If this fails, can we recover remotely?"
+- If recovery requires physical access the user can't guarantee → DO NOT DO IT
+- If unsure → ask the user before proceeding
+- A working device that's slightly wrong > a bricked device that's "perfect"
+
 ## Hardware Inventory
 
 ### NanoPi NEO Air

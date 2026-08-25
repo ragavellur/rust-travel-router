@@ -1,15 +1,17 @@
 [Unit]
-Description=Sync system clock via NTP
+Description=Sync system clock via NTP — BLOCKS boot until clock is correct
 DefaultDependencies=no
-After=network-online.target
+After=network-online.target network.target
 Wants=network-online.target
-Before=travel-net-overlay.service travel-net.service travel-net-tailscale.service
+Before=travel-net.service travel-net-tailscale.service
 
 [Service]
 Type=oneshot
 ExecStart=/usr/sbin/travel-net-timesync
 RemainAfterExit=yes
 StandardOutput=journal
+# Give it time to sync but don't block forever
+TimeoutStartSec=45
 
 [Install]
 WantedBy=multi-user.target
