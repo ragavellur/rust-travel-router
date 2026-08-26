@@ -68,6 +68,12 @@ If an issue is here, it was fixed before and MUST NOT be reintroduced.
 - **Cause**: build-debs.sh must generate per-arch control files with correct Architecture field
 - **Status**: build-debs.sh generates correct per-arch control. Verified by `dpkg-deb -I`.
 
+### 11. Corrupted dpkg status causes binary corruption on install
+- **Symptom**: "Exec format error" after dpkg -i .deb — binary at /usr/sbin/travel-net is garbage data, not ELF
+- **Cause**: Previous dpkg status corruption makes dpkg unable to track files properly; subsequent installs write corrupted data
+- **Fix**: Clear dpkg status (`cp /dev/null /var/lib/dpkg/status`), rebuild with `dpkg --configure -a`, then manually copy binary via scp
+- **Prevention**: The ONLY real fix is a clean SD card flash. Remote fixes are temporary.
+
 ## Rules Summary
 1. NEVER touch /var/lib/dpkg/status
 2. NEVER modify/remove NM config or override (postinst OR prerm)
