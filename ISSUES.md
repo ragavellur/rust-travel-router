@@ -83,3 +83,12 @@ If an issue is here, it was fixed before and MUST NOT be reintroduced.
 6. NEVER pin tailscale version (1.102.3 works on all tested kernels)
 7. ALWAYS warn user to connect via non-AP interface before uninstall
 8. ALWAYS run apt-get update before apt-get install in postinst
+
+### 12. Single-radio brcmfmac: AP channel selection & HT capabilities
+- **Symptom**: hostapd AP fails or behaves wrong on NanoPi NEO Air (brcmfmac BCM43430)
+- **Cause 1**: `ht_capab` containing `[LDPC]` → hostapd logs `Driver does not support configured HT capability [LDPC]` → `Unable to setup interface` → exit 256, even on a valid channel. This was the REAL reason channels 1/6/11 "failed" while STA was on 3 — every earlier failure was LDPC rejection, not channel mismatch.
+- **Cause 2**: Parsing `iw dev wlanX link` / `iw scan` output: `freq: 2422.0` and `signal: -52.00 dBm` are FLOATS. `parse::<u32>()` fails → `detect_sta_channel()` always returned None and `scan_least_congested_channel()` saw zero networks, picking channel 1 blindly.
+- **Cause 3**: hostapd on a channel != STA channel can "start" but the firmware silently keeps the radio on the STA channel. Beacons advertise the wrong channel → AP invisible/broken for clients. The monitor must verify the ACTUAL channel via `iw dev wlan1 info`, not assume config was honored.
+- **Cause 4**: After a failed hostapd start the interface is stuck DISABLED; reusing it fails forever. Must `iw dev wlan1 del` + recreate before every attempt.
+- **Fix**: HT20-only 2.4GHz `ht_capab=[HT20][SHORT-GI-20]` (no LDPC, no HT40). Parse freqs/signals as f32. Detect STA channel first (with retries) and force AP to it; only scan when no STA. Monitor compares actual AP channel to STA channel and restarts on mismatch; recreates the interface on every restart.
+- **Status**: Fixed in v0.2.33. Verified on NanoPi: AP on STA channel 3, survives STA drop, self-heals killed hostapd, web UI 200.

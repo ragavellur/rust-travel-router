@@ -38,9 +38,26 @@ async fn main() {
     tracing::info!("Uplink interface: {uplink}");
     firewall::apply_performance_tuning(&cfg);
 
-    // Start AP FIRST — the AP must always be available, even without upstream.
-    // On brcmfmac (NanoPi), AP and STA share one radio. Starting AP first
-    // ensures it gets a clean channel. STA will follow the AP's channel.
+    // Connect STA so the AP can match its channel. On single-radio radios
+    // (brcmfmac NEO Air), the AP MUST run on the same channel as the STA.
+    // The wait is bounded (~8s) so the AP still comes up quickly even if no
+    // network is available; a late connection is picked up by the AP monitor.
+    if !cfg.sta_ssid.is_empty() {
+        let backend = wifi::detect_backend(&cfg.wifi_backend);
+        let sta_iface = cfg.sta_interface.clone();
+        let sta_ssid = cfg.sta_ssid.clone();
+        let sta_password = cfg.sta_password.clone();
+        let cfg_for_tuning = cfg.clone();
+        tracing::info!("Connecting to uplink STA: {sta_ssid}");
+        let task = tokio::task::spawn_blocking(move || {
+            let result = wifi::connect::connect(&backend, &sta_ssid, &sta_password, &sta_iface);
+            firewall::apply_performance_tuning(&cfg_for_tuning);
+            result
+        });
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(8), task).await;
+    }
+
+    // Start AP — it auto-detects the STA channel when connected.
     if let Err(e) = ap::start_ap(&cfg).await {
         tracing::error!("Failed to start AP: {e}");
     }
@@ -50,23 +67,10 @@ async fn main() {
         let _ = firewall::apply_ruleset(&cfg).await;
     }
 
-    // Auto-connect STA AFTER AP is up. On brcmfmac, wpa_supplicant will
-    // scan on the AP's channel. If upstream is on that channel, it connects.
-    // If not, the AP still works standalone.
-    if !cfg.sta_ssid.is_empty() {
-        let backend = wifi::detect_backend(&cfg.wifi_backend);
-        let sta_iface = cfg.sta_interface.clone();
-        let sta_ssid = cfg.sta_ssid.clone();
-        let sta_password = cfg.sta_password.clone();
-        let cfg_for_tuning = cfg.clone();
-        tokio::task::spawn_blocking(move || {
-            tracing::info!("Auto-connecting to uplink STA: {sta_ssid}");
-            if let Err(e) = wifi::connect::connect(&backend, &sta_ssid, &sta_password, &sta_iface) {
-                tracing::warn!("STA auto-connect failed: {e}");
-            }
-            firewall::apply_performance_tuning(&cfg_for_tuning);
-        });
-    }
+    // Monitor the STA channel and keep the AP in sync (single-radio devices).
+    // If the AP ever dies or the user connects to a new WiFi network, the
+    // monitor restarts the AP on the correct channel.
+    ap::start_ap_channel_monitor(cfg.clone());
 
     // Start the saved VPN (Tailscale / WireGuard). Must come after the
     // firewall ruleset so the dedicated travel-vpn nft table survives the

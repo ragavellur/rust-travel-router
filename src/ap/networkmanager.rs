@@ -73,7 +73,7 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         .output()
         .map_err(|e| format!("ip link set up failed: {e}"))?;
 
-    let (channel, band) = crate::ap::channel::resolve_ap_channel(cfg.ap_channel, &cfg.ap_band, &cfg.sta_interface);
+    let (channel, band) = crate::ap::channel::resolve_ap_channel(cfg.ap_channel, &cfg.ap_band, &cfg.sta_interface, &cfg.sta_interface);
 
     // Map ap_band to NM wifi.band
     // When channel is 0 (auto), always pass None for band to let NM decide
@@ -160,7 +160,52 @@ pub async fn start_nm_ap(cfg: &Config) -> Result<(), String> {
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
     if !last_err.is_empty() {
-        return Err(format!("Failed to activate NM hotspot: {last_err}"));
+        // Retry with least congested scanned channel
+        let fallback_ch = crate::ap::channel::scan_least_congested_channel(&cfg.sta_interface);
+        tracing::warn!("Retrying NM hotspot on re-scanned channel {fallback_ch}");
+        let _ = Command::new("nmcli")
+            .args(["connection", "delete", NM_CONNECTION_NAME])
+            .output();
+        let fallback_ch_str = fallback_ch.to_string();
+        let mut fallback_args = vec![
+            "connection", "add",
+            "type", "wifi",
+            "mode", "ap",
+            "con-name", NM_CONNECTION_NAME,
+            "ifname", iface,
+            "ssid", &cfg.ap_ssid,
+            "ipv4.method", "shared",
+            "ipv4.address", &cidr,
+            "wifi.channel", &fallback_ch_str,
+            "wifi.band", "bg",
+        ];
+        if !cfg.ap_password.is_empty() {
+            fallback_args.push("wifi-sec.key-mgmt");
+            fallback_args.push("wpa-psk");
+            fallback_args.push("wifi-sec.psk");
+            fallback_args.push(&cfg.ap_password);
+        }
+        let _ = Command::new("nmcli")
+            .args(&fallback_args)
+            .output();
+        let mut fallback_err = String::new();
+        for _attempt in 1..=3 {
+            let result = Command::new("nmcli")
+                .args(["connection", "up", NM_CONNECTION_NAME])
+                .output()
+                .map_err(|e| format!("nmcli up failed: {e}"))?;
+            if result.status.success() {
+                fallback_err.clear();
+                break;
+            }
+            fallback_err = String::from_utf8_lossy(&result.stderr).to_string();
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+        if !fallback_err.is_empty() {
+            return Err(format!("Failed to activate NM hotspot: {fallback_err}"));
+        }
+        tracing::info!("NM hotspot started on re-scanned channel {fallback_ch} (SSID: {}, iface: {})", cfg.ap_ssid, iface);
+        return Ok(());
     }
 
     tracing::info!("NM hotspot started (SSID: {}, iface: {})", cfg.ap_ssid, iface);
